@@ -21,14 +21,26 @@ fn initialize_model(_app: &App) -> Model {
     walls.insert((2, 3));
     walls.insert((3, 3));
 
-    let path = AgentPath {
+    let path_1 = AgentPath {
         initial_node: (0, 0),
         lookahead: vec![(0, 1), (1, 1), (1, 3)],
         a_star: vec![(1, 4), (2, 4), (5, 4)],
     };
 
+    let path_2 = AgentPath {
+        initial_node: (4, 5),
+        lookahead: vec![(5, 5), (5, 4), (5, 3)],
+        a_star: vec![(5, 2), (4, 2), (3, 2), (2, 2), (1, 2)],
+    };
+
+    let path_3 = AgentPath {
+        initial_node: (2, 3),
+        lookahead: vec![],
+        a_star: vec![(3, 3), (4, 3), (5, 3), (6, 3), (7, 3)],
+    };
+
     let warehouse = Warehouse::new((8, 12), walls);
-    let paths = vec![path];
+    let paths = vec![path_1, path_2, path_3];
 
     let drawhouse = WarehouseSim::new(warehouse, (0.0, 0.0), 40.0, paths, 1.0);
 
@@ -53,6 +65,7 @@ const NODE_COLOR_1: StdColour = CORAL;
 const NODE_COLOR_2: StdColour = CORNFLOWERBLUE;
 const LOOKAHEAD_COLOUR: StdColour = GREEN;
 const ASTAR_COLOUR: StdColour = RED;
+const COLLISION_COST: i32 = 200;
 
 struct Warehouse {
     size: (i32, i32),
@@ -68,6 +81,7 @@ struct WarehouseSim {
     speed: f32,
     cumulative_cost: i32,
     bubbles: Vec<TextBubble>,
+    collisions: Vec<Vec<bool>>,
 }
 
 struct AgentPath {
@@ -92,6 +106,18 @@ impl TextBubble {
             text: String::from("+1"),
             color: (1.0, 0.0, 0.0),
             size: 30,
+            initial_position: (position.0, position.1 + cell_size * 0.8),
+            travel_lenght: cell_size,
+            travel_time: 3.0,
+            initial_time,
+        }
+    }
+
+    fn collision_cost(position: (f32, f32), cell_size: f32, initial_time: f32) -> TextBubble {
+        TextBubble {
+            text: format!("+{:?}", COLLISION_COST),
+            color: (1.0, 0.0, 0.0),
+            size: 40,
             initial_position: (position.0, position.1 + cell_size * 0.8),
             travel_lenght: cell_size,
             travel_time: 3.0,
@@ -131,6 +157,7 @@ impl WarehouseSim {
         paths: Vec<AgentPath>,
         speed: f32,
     ) -> Self {
+        let n_robots = paths.len();
         WarehouseSim {
             warehouse,
             position,
@@ -140,6 +167,7 @@ impl WarehouseSim {
             speed,
             bubbles: Vec::new(),
             cumulative_cost: 0,
+            collisions: vec![vec![false; n_robots]; n_robots],
         }
     }
 
@@ -211,6 +239,30 @@ impl WarehouseSim {
             }
         }
 
+        for robot_1 in 0..self.paths.len() {
+            for robot_2 in (robot_1 + 1)..self.paths.len() {
+                let pos_1 = self.get_robot_position(robot_1, new_time);
+                let pos_2 = self.get_robot_position(robot_2, new_time);
+                if (pos_1.0 - pos_2.0).powf(2.0) + (pos_1.1 - pos_2.1).powf(2.0) > (0.7).powf(2.0) {
+                    self.collisions[robot_1][robot_2] = false;
+                    self.collisions[robot_2][robot_1] = false;
+                    continue;
+                }
+
+                if !self.collisions[robot_1][robot_2] {
+                    self.cumulative_cost += COLLISION_COST;
+                    let mean_position = ((pos_1.0 + pos_2.0) / 2.0, (pos_1.1 + pos_2.1) / 2.0);
+                    self.bubbles.push(TextBubble::collision_cost(
+                        self.fnode_to_coord(&mean_position),
+                        self.cell_size,
+                        new_time,
+                    ));
+                }
+                self.collisions[robot_1][robot_2] = true;
+                self.collisions[robot_2][robot_1] = true;
+            }
+        }
+
         let mut prev_bubbles = vec![];
         std::mem::swap(&mut self.bubbles, &mut prev_bubbles);
         self.bubbles = prev_bubbles
@@ -254,7 +306,7 @@ impl WarehouseSim {
     }
 
     fn draw_robot_path(&self, robot_index: usize, time: f32, drawing: &nannou::draw::Draw) {
-        let diameter = self.cell_size;
+        let diameter = 0.7 * self.cell_size;
 
         // The current turn, which is the point in the path in which the robot is,
         // starts at 0 at start_time and increses by "speed" each second.
@@ -286,9 +338,15 @@ impl WarehouseSim {
         }
 
         let position = self.fnode_to_coord(&current_node);
+        let colour = if self.collisions[robot_index].iter().any(|&x| x) {
+            ORANGE
+        } else {
+            GREEN
+        };
 
         drawing
             .ellipse()
+            .color(colour)
             .x_y(position.0, position.1)
             .w_h(diameter, diameter);
     }
@@ -300,15 +358,5 @@ fn view(app: &App, model: &Model, frame: Frame) {
 
     model.waresims.iter().for_each(|w| w.draw(&draw));
 
-    let time = app.time;
-
-    let horizontal = time.sin();
-    let vertical = (time * 2.0).sin();
-
-    let boundary = app.window_rect();
-    let x = map_range(horizontal, -1.0, 1.0, boundary.left(), boundary.right());
-    let y = map_range(vertical, -1.0, 1.0, boundary.bottom(), boundary.top());
-
-    draw.ellipse().color(RED).x_y(x, y);
     draw.to_frame(app, &frame).unwrap();
 }
