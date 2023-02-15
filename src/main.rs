@@ -14,6 +14,7 @@ fn main() {
         .run();
 }
 
+const DEFAULT_SPEED: f32 = 2.0;
 const Y_POS: [f32; 5] = [-200.0, 0.0, 200.0, 400.0, 600.0];
 
 struct Model {
@@ -38,7 +39,7 @@ impl Model {
                         (200.0, Y_POS[i]),
                         20.0,
                         new_paths,
-                        1.0,
+                        DEFAULT_SPEED,
                     );
                     drawhouse.toggle_running(false);
                     drawhouse
@@ -72,7 +73,7 @@ impl Model {
             (-200.0, 50.0),
             20.0,
             best_policy,
-            1.0,
+            DEFAULT_SPEED,
         );
 
         self.robot_in_improvement =
@@ -91,7 +92,13 @@ fn initialize_model(_app: &App) -> Model {
     let warehouse = Warehouse::new((12, 8), walls);
     let paths = algorithm::initialize_paths(&warehouse, &endpoints);
 
-    let drawhouse = WarehouseSim::new(warehouse.clone(), (-200.0, 50.0), 20.0, paths, 1.0);
+    let drawhouse = WarehouseSim::new(
+        warehouse.clone(),
+        (-200.0, 50.0),
+        20.0,
+        paths,
+        DEFAULT_SPEED,
+    );
 
     let mut model = Model {
         warehouse,
@@ -131,7 +138,7 @@ fn update(_app: &App, model: &mut Model, update: Update) {
 
 fn view(app: &App, model: &Model, frame: Frame) {
     let draw = app.draw();
-    draw.background().color(BLUE);
+    draw.background().color(GRAY);
 
     model.base_waresim.draw(&draw);
     model.alternatives.iter().for_each(|w| w.draw(&draw));

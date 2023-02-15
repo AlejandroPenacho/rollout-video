@@ -217,19 +217,18 @@ impl WarehouseSim {
         }
         let new_time = self.run_time + delta_time;
 
+        let prev_turn = self.run_time * self.speed;
+        let new_turn = new_time * self.speed;
+
+        let turn_start = prev_turn == 0.0 || (new_turn.floor() as i32 != prev_turn.floor() as i32);
+
         for robot_index in 0..self.paths.len() {
-            let current_position = self.get_robot_position(robot_index, self.run_time);
             let new_position = self.get_robot_position(robot_index, new_time);
 
-            let current_node = (
-                current_position.0.round() as usize,
-                current_position.1.round() as usize,
-            );
-            let new_node = (
-                new_position.0.round() as usize,
-                new_position.1.round() as usize,
-            );
-            if current_node.0 != new_node.0 || current_node.1 != new_node.1 {
+            let new_node = (new_position.0.round() as i32, new_position.1.round() as i32);
+            let target_node = self.paths[robot_index].get_path_iterator().last().unwrap();
+
+            if (target_node.0 != new_node.0 || target_node.1 != new_node.1) && turn_start {
                 self.cumulative_cost += 1;
                 self.bubbles
                     .push(TextBubble::movement_cost(new_position, new_time));
@@ -321,11 +320,11 @@ impl WarehouseSim {
         let path_iterator = path
             .improved_path
             .iter()
-            .map(|n| (n, ORANGE))
-            .chain(path.lookahead.iter().map(|n| (n, LOOKAHEAD_COLOUR)))
-            .chain(path.a_star.iter().map(|n| (n, ASTAR_COLOUR)));
+            .map(|n| (n, ORANGE, 2.0))
+            .chain(path.lookahead.iter().map(|n| (n, LOOKAHEAD_COLOUR, 3.0)))
+            .chain(path.a_star.iter().map(|n| (n, ASTAR_COLOUR, 1.0)));
 
-        for (node, colour) in path_iterator.skip(current_turn.ceil() as usize) {
+        for (node, colour, z_index) in path_iterator.skip(current_turn.ceil() as usize) {
             let start = self.fnode_to_coord(&current_node_in_path);
             let end = self.inode_to_coord(node);
 
@@ -333,6 +332,7 @@ impl WarehouseSim {
                 .line()
                 .start(pt2(start.0, start.1))
                 .end(pt2(end.0, end.1))
+                .z(z_index)
                 .weight(self.cell_size / 8.0)
                 .color(colour);
 
