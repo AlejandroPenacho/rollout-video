@@ -8,7 +8,7 @@ pub fn initialize_paths(warehouse: &Warehouse, endpoints: &[(Node, Node)]) -> Ve
         .map(|(origin, target)| {
             let mut path = obtain_a_star_path(warehouse, origin, target).unwrap();
             let a_star_path = path.split_off(1);
-            AgentPath::new(path[0], vec![], a_star_path)
+            AgentPath::new(vec![path[0]], vec![], a_star_path)
         })
         .collect()
 }
@@ -22,7 +22,7 @@ pub fn improve_policy(
         .iter()
         .filter_map(|delta| {
             let mut new_policy: Vec<AgentPath> = current_policy.to_owned();
-            let initial_node = current_policy[agent].initial_node;
+            let initial_node = current_policy[agent].improved_path.iter().last().unwrap();
             let target_node = new_policy[agent].get_path_iterator().last().unwrap();
             let lookahead_node = (initial_node.0 + delta.0, initial_node.1 + delta.1);
 
@@ -34,7 +34,9 @@ pub fn improve_policy(
                 .unwrap()
                 .split_off(1);
 
-            new_policy[agent] = AgentPath::new(initial_node, vec![lookahead_node], a_star_path);
+            new_policy[agent].lookahead = vec![lookahead_node];
+            new_policy[agent].a_star = a_star_path;
+
             Some(new_policy)
         })
         .collect()

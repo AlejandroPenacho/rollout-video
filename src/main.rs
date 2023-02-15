@@ -14,8 +14,70 @@ fn main() {
         .run();
 }
 
+const Y_POS: [f32; 5] = [-200.0, 0.0, 200.0, 400.0, 600.0];
+
 struct Model {
-    waresims: Vec<WarehouseSim>,
+    wait_time: Option<f32>,
+    warehouse: Warehouse,
+    base_waresim: WarehouseSim,
+    alternatives: Vec<WarehouseSim>,
+    robot_in_improvement: usize,
+}
+
+impl Model {
+    fn generate_alternatives(&mut self) {
+        let warehouse = &self.warehouse;
+        let paths = self.base_waresim.get_paths();
+        let alternatives: Vec<WarehouseSim> =
+            algorithm::improve_policy(warehouse, paths, self.robot_in_improvement)
+                .into_iter()
+                .enumerate()
+                .map(|(i, new_paths)| {
+                    let mut drawhouse = WarehouseSim::new(
+                        warehouse.clone(),
+                        (200.0, Y_POS[i]),
+                        20.0,
+                        new_paths,
+                        1.0,
+                    );
+                    drawhouse.toggle_running(false);
+                    drawhouse
+                })
+                .collect();
+        self.alternatives = alternatives;
+        self.wait_time = Some(1.0);
+    }
+
+    fn check_completion(&self) -> bool {
+        self.alternatives.iter().all(|w| w.is_finished())
+    }
+
+    fn save_best_policy(&mut self) {
+        let mut best_policy = self
+            .alternatives
+            .iter()
+            .min_by_key(|w| w.get_current_cost())
+            .unwrap()
+            .get_paths()
+            .to_owned();
+
+        best_policy.iter_mut().for_each(|p| p.integrate_lookahead());
+
+        for path in best_policy.iter() {
+            println!("{:?}", path)
+        }
+
+        self.base_waresim = WarehouseSim::new(
+            self.warehouse.clone(),
+            (-200.0, 50.0),
+            20.0,
+            best_policy,
+            1.0,
+        );
+
+        self.robot_in_improvement =
+            (self.robot_in_improvement + 1) % self.base_waresim.get_paths().len();
+    }
 }
 
 fn initialize_model(_app: &App) -> Model {
@@ -24,30 +86,55 @@ fn initialize_model(_app: &App) -> Model {
     walls.insert((1, 3));
     walls.insert((3, 3));
 
-    let endpoints = [((0, 0), (5, 4)), ((4, 5), (1, 2)), ((2, 3), (7, 3))];
+    let endpoints = [((0, 0), (4, 5)), ((2, 7), (7, 3)), ((9, 7), (2, 3))];
 
-    let warehouse = Warehouse::new((8, 12), walls);
+    let warehouse = Warehouse::new((12, 8), walls);
     let paths = algorithm::initialize_paths(&warehouse, &endpoints);
 
-    let drawhouse = WarehouseSim::new(warehouse, (0.0, 0.0), 40.0, paths, 1.0);
+    let drawhouse = WarehouseSim::new(warehouse.clone(), (-200.0, 50.0), 20.0, paths, 1.0);
 
-    Model {
-        waresims: vec![drawhouse],
-    }
+    let mut model = Model {
+        warehouse,
+        base_waresim: drawhouse,
+        alternatives: vec![],
+        robot_in_improvement: 0,
+        wait_time: None,
+    };
+    model.generate_alternatives();
+
+    model
 }
 
 fn update(_app: &App, model: &mut Model, update: Update) {
     model
-        .waresims
+        .alternatives
         .iter_mut()
         .for_each(|w| w.update_time(update.since_last.as_secs_f32()));
+
+    if let Some(t) = model.wait_time.as_mut() {
+        *t -= update.since_last.as_secs_f32();
+    };
+
+    if model.check_completion() {
+        model.save_best_policy();
+        model.generate_alternatives();
+    }
+
+    if model.wait_time.map_or(false, |t| t < 0.0) {
+        model
+            .alternatives
+            .iter_mut()
+            .for_each(|w| w.toggle_running(true));
+        model.wait_time = None;
+    }
 }
 
 fn view(app: &App, model: &Model, frame: Frame) {
     let draw = app.draw();
     draw.background().color(BLUE);
 
-    model.waresims.iter().for_each(|w| w.draw(&draw));
+    model.base_waresim.draw(&draw);
+    model.alternatives.iter().for_each(|w| w.draw(&draw));
 
     draw.to_frame(app, &frame).unwrap();
 }

@@ -27,6 +27,7 @@ const LOOKAHEAD_COLOUR: StdColour = GREEN;
 const ASTAR_COLOUR: StdColour = RED;
 const COLLISION_COST: i32 = 200;
 
+#[derive(Clone)]
 pub struct Warehouse {
     size: (i32, i32),
     walls: HashSet<Node>,
@@ -37,6 +38,7 @@ pub struct WarehouseSim {
     position: (f32, f32),
     cell_size: f32,
     paths: Vec<AgentPath>,
+    running: bool,
     run_time: f32,
     speed: f32,
     cumulative_cost: i32,
@@ -44,24 +46,29 @@ pub struct WarehouseSim {
     collisions: Vec<Vec<bool>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AgentPath {
-    pub initial_node: Node,
+    pub improved_path: Vec<Node>,
     pub lookahead: Vec<Node>,
     pub a_star: Vec<Node>,
 }
 
 impl AgentPath {
-    pub fn new(initial_node: Node, lookahead: Vec<Node>, a_star: Vec<Node>) -> Self {
+    pub fn new(improved_path: Vec<Node>, lookahead: Vec<Node>, a_star: Vec<Node>) -> Self {
         AgentPath {
-            initial_node,
+            improved_path,
             lookahead,
             a_star,
         }
     }
 
+    pub fn integrate_lookahead(&mut self) {
+        self.improved_path.append(&mut self.lookahead);
+    }
+
     pub fn get_path_iterator(&self) -> impl Iterator<Item = &Node> {
-        std::iter::once(&self.initial_node)
+        self.improved_path
+            .iter()
             .chain(self.lookahead.iter())
             .chain(self.a_star.iter())
     }
@@ -130,6 +137,7 @@ impl WarehouseSim {
             warehouse,
             position,
             cell_size,
+            running: false,
             paths,
             run_time: 0.0,
             speed,
@@ -137,6 +145,25 @@ impl WarehouseSim {
             cumulative_cost: 0,
             collisions: vec![vec![false; n_robots]; n_robots],
         }
+    }
+
+    pub fn is_finished(&self) -> bool {
+        let turn = (self.run_time * self.speed).floor() as usize;
+        self.paths
+            .iter()
+            .all(|p| p.get_path_iterator().count() <= turn)
+    }
+
+    pub fn get_current_cost(&self) -> i32 {
+        self.cumulative_cost
+    }
+
+    pub fn toggle_running(&mut self, running: bool) {
+        self.running = running;
+    }
+
+    pub fn get_paths(&self) -> &[AgentPath] {
+        &self.paths
     }
 
     fn fnode_to_coord(&self, node: &(f32, f32)) -> (f32, f32) {
@@ -160,7 +187,9 @@ impl WarehouseSim {
         let current_turn = time * self.speed;
 
         // The complete path of the robot is the obatained chaining the 3 parts
-        let mut complete_path = std::iter::once(&path.initial_node)
+        let mut complete_path = path
+            .improved_path
+            .iter()
             .chain(path.lookahead.iter())
             .chain(path.a_star.iter());
 
@@ -183,6 +212,9 @@ impl WarehouseSim {
     }
 
     pub fn update_time(&mut self, delta_time: f32) {
+        if !self.running {
+            return;
+        }
         let new_time = self.run_time + delta_time;
 
         for robot_index in 0..self.paths.len() {
@@ -247,8 +279,15 @@ impl WarehouseSim {
     }
 
     fn draw_warehouse(&self, drawing: &nannou::draw::Draw) {
-        for i in 0..self.warehouse.size.1 {
-            for j in 0..self.warehouse.size.0 {
+        // drawing
+        //     .rect()
+        //     .color(BLACK)
+        //     .x_y(self.position.0, self.position.1)
+        //     .w(self.cell_size * (self.warehouse.size.0 as f32 + 0.2))
+        //     .h(self.cell_size * (self.warehouse.size.1 as f32 + 0.2));
+
+        for i in 0..self.warehouse.size.0 {
+            for j in 0..self.warehouse.size.1 {
                 let (x, y) = self.inode_to_coord(&(i, j));
                 let color = if self.warehouse.walls.contains(&(i, j)) {
                     WALL_COLOR
@@ -280,12 +319,13 @@ impl WarehouseSim {
         let mut current_node_in_path = current_node;
 
         let path_iterator = path
-            .lookahead
+            .improved_path
             .iter()
-            .map(|n| (n, LOOKAHEAD_COLOUR))
+            .map(|n| (n, ORANGE))
+            .chain(path.lookahead.iter().map(|n| (n, LOOKAHEAD_COLOUR)))
             .chain(path.a_star.iter().map(|n| (n, ASTAR_COLOUR)));
 
-        for (node, colour) in path_iterator.skip(current_turn.floor() as usize) {
+        for (node, colour) in path_iterator.skip(current_turn.ceil() as usize) {
             let start = self.fnode_to_coord(&current_node_in_path);
             let end = self.inode_to_coord(node);
 
