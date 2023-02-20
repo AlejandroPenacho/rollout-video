@@ -5,6 +5,7 @@ use warehouse::{AgentPath, Warehouse, WarehouseSim};
 
 use nannou::prelude::*;
 
+use core::panic;
 use std::collections::HashSet;
 
 fn main() {

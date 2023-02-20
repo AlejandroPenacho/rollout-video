@@ -268,8 +268,9 @@ impl WarehouseSim {
 
     pub fn draw(&self, drawing: &nannou::draw::Draw) {
         self.draw_warehouse(drawing);
+        self.draw_all_robot_paths(self.run_time, drawing);
         for robot_index in 0..self.paths.len() {
-            self.draw_robot_path(robot_index, self.run_time, drawing);
+            self.draw_robot(robot_index, self.run_time, drawing);
         }
         // drawing.text("Compramos tu coche").font_size(50).w(100.0);
         for bubble_index in 0..self.bubbles.len() {
@@ -305,39 +306,37 @@ impl WarehouseSim {
         }
     }
 
-    fn draw_robot_path(&self, robot_index: usize, time: f32, drawing: &nannou::draw::Draw) {
+    fn draw_all_robot_paths(&self, time: f32, drawing: &nannou::draw::Draw) {
         let diameter = 0.7 * self.cell_size;
+
+        let mut paths_in_node = std::collections::HashMap::new();
 
         // The current turn, which is the point in the path in which the robot is,
         // starts at 0 at start_time and increses by "speed" each second.
         let current_turn = time * self.speed;
 
-        let path = &self.paths[robot_index];
+        for (robot_index, path) in self.paths.iter().enumerate() {
+            let im_path = self.generate_path_segments(robot_index, &mut paths_in_node, time);
+            // println!("Path:\n{:?}\nIm path:\n{:?}\n\n", path, im_path);
+            for x in im_path.windows(2) {
+                let start = self.fnode_to_coord(&x[0].0);
+                let end = self.fnode_to_coord(&x[1].0);
+                let colour = x[1].1;
+
+                drawing
+                    .line()
+                    .start(pt2(start.0, start.1))
+                    .end(pt2(end.0, end.1))
+                    .weight(self.cell_size / 8.0)
+                    .color(colour);
+            }
+        }
+    }
+
+    fn draw_robot(&self, robot_index: usize, time: f32, drawing: &nannou::draw::Draw) {
+        let diameter = 0.7 * self.cell_size;
 
         let current_node = self.get_robot_position(robot_index, time);
-        let mut current_node_in_path = current_node;
-
-        let path_iterator = path
-            .improved_path
-            .iter()
-            .map(|n| (n, ORANGE, 2.0))
-            .chain(path.lookahead.iter().map(|n| (n, LOOKAHEAD_COLOUR, 3.0)))
-            .chain(path.a_star.iter().map(|n| (n, ASTAR_COLOUR, 1.0)));
-
-        for (node, colour, z_index) in path_iterator.skip(current_turn.ceil() as usize) {
-            let start = self.fnode_to_coord(&current_node_in_path);
-            let end = self.inode_to_coord(node);
-
-            drawing
-                .line()
-                .start(pt2(start.0, start.1))
-                .end(pt2(end.0, end.1))
-                .z(z_index)
-                .weight(self.cell_size / 8.0)
-                .color(colour);
-
-            current_node_in_path = (node.0 as f32, node.1 as f32);
-        }
 
         let position = self.fnode_to_coord(&current_node);
         let colour = if self.collisions[robot_index].iter().any(|&x| x) {
@@ -371,5 +370,122 @@ impl WarehouseSim {
             )
             .font_size(bubble.size)
             .x_y(position.0, position.1);
+    }
+
+    fn generate_path_segments(
+        &self,
+        agent_index: usize,
+        paths_in_node: &mut std::collections::HashMap<Node, NodeOverlap>,
+        time: f32,
+    ) -> Vec<((f32, f32), StdColour)> {
+        let path = &self.paths[agent_index];
+        let current_turn = time * self.speed;
+
+        let mut path_iterator = path
+            .improved_path
+            .iter()
+            .map(|&n| (n, ORANGE))
+            .chain(path.lookahead.iter().map(|&n| (n, LOOKAHEAD_COLOUR)))
+            .chain(path.a_star.iter().map(|&n| (n, ASTAR_COLOUR)))
+            .skip(current_turn.floor() as usize);
+
+        let Some(buffer_first_virtual_element ) = path_iterator.next() else { return vec![] };
+        let Some(second_node) = path_iterator.next() else { return vec![] };
+
+        let mut buffer_first_real_element = (self.get_robot_position(agent_index, time), ORANGE);
+
+        let mut buffer: Vec<((i32, i32), StdColour)> =
+            vec![buffer_first_virtual_element, second_node];
+
+        let mut buffer_direction: (i32, i32) = (
+            buffer[1].0 .0 - buffer[0].0 .0,
+            buffer[1].0 .1 - buffer[0].0 .1,
+        );
+
+        let mut output: Vec<((f32, f32), StdColour)> = Vec::new();
+
+        for (new_node, new_colour) in path_iterator {
+            let last_node = buffer.iter().last().unwrap().0;
+            let segment_direction = (new_node.0 - last_node.0, new_node.1 - last_node.1);
+
+            if segment_direction == buffer_direction {
+                buffer.push((new_node, new_colour));
+                continue;
+            }
+
+            append_segment_to_path(
+                &mut output,
+                &mut buffer,
+                &mut buffer_first_real_element,
+                Some((new_node, new_colour)),
+            );
+
+            buffer_direction = (
+                buffer[1].0 .0 - buffer[0].0 .0,
+                buffer[1].0 .1 - buffer[0].0 .1,
+            );
+        }
+
+        append_segment_to_path(
+            &mut output,
+            &mut buffer,
+            &mut buffer_first_real_element,
+            None,
+        );
+        output
+    }
+}
+
+fn append_segment_to_path(
+    complete_path: &mut Vec<((f32, f32), StdColour)>,
+    buffer: &mut Vec<((i32, i32), StdColour)>,
+    buffer_first_real_element: &mut ((f32, f32), StdColour),
+    new_element: Option<((i32, i32), StdColour)>,
+) {
+    // Save the last element of the buffer, to be used as the first in the
+    // next buffer
+    let new_buffer_first_virtual_element = *buffer.iter().last().unwrap();
+
+    println!("Appeding this segment:\n{:?}", buffer);
+
+    // Create a float version of the buffer, substituting the first element
+    // by the real one, which might be displaced
+    let mut float_buffer: Vec<((f32, f32), StdColour)> = vec![*buffer_first_real_element];
+    float_buffer.extend(
+        buffer
+            .iter()
+            .skip(1)
+            .map(|((x, y), c)| ((*x as f32, *y as f32), *c)),
+    );
+
+    // Here, "float_buffer " is shifted
+
+    // The last element of the buffer is saved for the next buffer
+    *buffer_first_real_element = float_buffer.pop().unwrap();
+
+    // Append the float_buffer to the complete path
+    complete_path.append(&mut float_buffer);
+
+    match new_element {
+        Some(elem) => {
+            *buffer = vec![new_buffer_first_virtual_element, elem];
+        }
+        None => {
+            complete_path.push(*buffer_first_real_element);
+        }
+    }
+}
+
+struct NodeOverlap {
+    vertical: [bool; 5],
+    horizontal: [bool; 5],
+}
+
+impl std::default::Default for NodeOverlap {
+    fn default() -> Self {
+        Self {
+            vertical: [false; 5],
+            horizontal: [false; 5],
+        }
     }
 }
