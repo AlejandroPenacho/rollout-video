@@ -328,14 +328,39 @@ impl WarehouseSim {
                 let mut start = self.fnode_to_coord(&x[0].0);
                 let end = self.fnode_to_coord(&x[1].0);
 
+                let colour = x[1].1;
+
+                // Chech that they are aligned. If not, create a small 90 deg.
+                // corner to fix it, moving the start
+                if start.0 != end.0 && start.1 != end.1 {
+                    let x_dif = (start.0 - end.0).abs();
+                    let y_dif = (start.1 - end.1).abs();
+
+                    if x_dif < y_dif {
+                        drawing
+                            .line()
+                            .start(pt2(start.0, start.1))
+                            .end(pt2(end.0, start.1))
+                            .weight(self.cell_size / 8.0)
+                            .color(colour);
+                        start.0 = end.0;
+                    } else {
+                        drawing
+                            .line()
+                            .start(pt2(start.0, start.1))
+                            .end(pt2(start.0, end.1))
+                            .weight(self.cell_size / 8.0)
+                            .color(colour);
+                        start.1 = end.1;
+                    }
+                }
+
                 if i == 0 {
                     start = (
                         (start.0 * (1.0 - alpha) + end.0 * alpha),
                         (start.1 * (1.0 - alpha) + end.1 * alpha),
                     );
                 }
-
-                let colour = x[1].1;
 
                 if start == end {
                     drawing
@@ -488,6 +513,7 @@ fn append_segment_to_path(
     let shape = Shape::new(buffer);
     let mut available_positions = [true; 5];
     for (node, _) in buffer.iter() {
+        // TODO: If it is a point, it should avoid both vertical and horizontal
         if shape == Shape::Point {
             continue;
         }
