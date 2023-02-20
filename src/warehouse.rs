@@ -323,12 +323,19 @@ impl WarehouseSim {
                 let end = self.fnode_to_coord(&x[1].0);
                 let colour = x[1].1;
 
-                drawing
-                    .line()
-                    .start(pt2(start.0, start.1))
-                    .end(pt2(end.0, end.1))
-                    .weight(self.cell_size / 8.0)
-                    .color(colour);
+                if start == end {
+                    drawing
+                        .text("Zzz")
+                        .x_y(start.0, start.1 + self.cell_size * 0.2)
+                        .color(colour);
+                } else {
+                    drawing
+                        .line()
+                        .start(pt2(start.0, start.1))
+                        .end(pt2(end.0, end.1))
+                        .weight(self.cell_size / 8.0)
+                        .color(colour);
+                }
             }
         }
     }
@@ -375,7 +382,7 @@ impl WarehouseSim {
     fn generate_path_segments(
         &self,
         agent_index: usize,
-        paths_in_node: &mut std::collections::HashMap<Node, NodeOverlap>,
+        node_availability: &mut std::collections::HashMap<Node, NodeOverlap>,
         time: f32,
     ) -> Vec<((f32, f32), StdColour)> {
         let path = &self.paths[agent_index];
@@ -418,6 +425,7 @@ impl WarehouseSim {
                 &mut buffer,
                 &mut buffer_first_real_element,
                 Some((new_node, new_colour)),
+                node_availability,
             );
 
             buffer_direction = (
@@ -431,22 +439,26 @@ impl WarehouseSim {
             &mut buffer,
             &mut buffer_first_real_element,
             None,
+            node_availability,
         );
         output
     }
 }
+
+const PATH_DELTA: [f32; 5] = [0.0, 0.2, -0.2, 0.4, -0.4];
 
 fn append_segment_to_path(
     complete_path: &mut Vec<((f32, f32), StdColour)>,
     buffer: &mut Vec<((i32, i32), StdColour)>,
     buffer_first_real_element: &mut ((f32, f32), StdColour),
     new_element: Option<((i32, i32), StdColour)>,
+    node_availability: &mut std::collections::HashMap<Node, NodeOverlap>,
 ) {
     // Save the last element of the buffer, to be used as the first in the
     // next buffer
     let new_buffer_first_virtual_element = *buffer.iter().last().unwrap();
 
-    println!("Appeding this segment:\n{:?}", buffer);
+    // println!("Appeding this segment:\n{:?}", buffer);
 
     // Create a float version of the buffer, substituting the first element
     // by the real one, which might be displaced
@@ -459,6 +471,52 @@ fn append_segment_to_path(
     );
 
     // Here, "float_buffer " is shifted
+    let shape = Shape::new(buffer);
+    let mut available_positions = [true; 5];
+    for (node, _) in buffer.iter() {
+        if shape == Shape::Point {
+            continue;
+        }
+        let Some(avail) = node_availability.get(node) else { continue };
+
+        let avail = match shape {
+            Shape::Point => continue,
+            Shape::Horizontal => avail.horizontal,
+            Shape::Vertical => avail.vertical,
+        };
+
+        (0..5).for_each(|i| available_positions[i] = available_positions[i] && avail[i]);
+    }
+
+    let delta_mag_index = (0..5).find(|&i| available_positions[i]).expect("RIIIP");
+
+    let delta_mag = PATH_DELTA[delta_mag_index];
+    let delta = match shape {
+        Shape::Point => (0.0, 0.0),
+        Shape::Horizontal => {
+            buffer.iter().for_each(|n| {
+                let mut current_availability =
+                    node_availability.get(&n.0).cloned().unwrap_or_default();
+                current_availability.horizontal[delta_mag_index] = false;
+                node_availability.insert(n.0, current_availability);
+            });
+            (0.0, delta_mag)
+        }
+        Shape::Vertical => {
+            buffer.iter().for_each(|n| {
+                let mut current_availability =
+                    node_availability.get(&n.0).cloned().unwrap_or_default();
+                current_availability.vertical[delta_mag_index] = false;
+                node_availability.insert(n.0, current_availability);
+            });
+            (delta_mag, 0.0)
+        }
+    };
+
+    float_buffer.iter_mut().for_each(|n| {
+        n.0 .0 += delta.0;
+        n.0 .1 += delta.1;
+    });
 
     // The last element of the buffer is saved for the next buffer
     *buffer_first_real_element = float_buffer.pop().unwrap();
@@ -476,6 +534,34 @@ fn append_segment_to_path(
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum Shape {
+    Vertical,
+    Horizontal,
+    Point,
+}
+
+impl Shape {
+    fn new(buffer: &[((i32, i32), StdColour)]) -> Self {
+        let direction = (
+            buffer[1].0 .0 - buffer[0].0 .0,
+            buffer[1].0 .1 - buffer[0].0 .1,
+        );
+
+        if direction.0 == 0 && direction.1 == 0 {
+            return Shape::Point;
+        }
+        if direction.0 != 0 && direction.1 == 0 {
+            return Shape::Horizontal;
+        }
+        if direction.0 == 0 && direction.1 != 0 {
+            return Shape::Vertical;
+        }
+        panic!()
+    }
+}
+
+#[derive(Clone)]
 struct NodeOverlap {
     vertical: [bool; 5],
     horizontal: [bool; 5],
@@ -484,8 +570,8 @@ struct NodeOverlap {
 impl std::default::Default for NodeOverlap {
     fn default() -> Self {
         Self {
-            vertical: [false; 5],
-            horizontal: [false; 5],
+            vertical: [true; 5],
+            horizontal: [true; 5],
         }
     }
 }
