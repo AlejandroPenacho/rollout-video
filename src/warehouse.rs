@@ -38,6 +38,7 @@ pub struct WarehouseSim {
     position: (f32, f32),
     cell_size: f32,
     paths: Vec<AgentPath>,
+    drawn_paths: Vec<Vec<((f32, f32), StdColour)>>,
     running: bool,
     run_time: f32,
     speed: f32,
@@ -133,18 +134,26 @@ impl WarehouseSim {
         speed: f32,
     ) -> Self {
         let n_robots = paths.len();
-        WarehouseSim {
+        let mut warehouse_sim = WarehouseSim {
             warehouse,
             position,
             cell_size,
             running: false,
             paths,
+            drawn_paths: vec![],
             run_time: 0.0,
             speed,
             bubbles: Vec::new(),
             cumulative_cost: 0,
             collisions: vec![vec![false; n_robots]; n_robots],
-        }
+        };
+
+        let mut node_availability = std::collections::HashMap::new();
+        let drawn_paths = (0..warehouse_sim.paths.len())
+            .map(|i| warehouse_sim.generate_path_segments(i, &mut node_availability, 0.0))
+            .collect();
+        warehouse_sim.drawn_paths = drawn_paths;
+        warehouse_sim
     }
 
     pub fn is_finished(&self) -> bool {
@@ -279,12 +288,12 @@ impl WarehouseSim {
     }
 
     fn draw_warehouse(&self, drawing: &nannou::draw::Draw) {
-        // drawing
-        //     .rect()
-        //     .color(BLACK)
-        //     .x_y(self.position.0, self.position.1)
-        //     .w(self.cell_size * (self.warehouse.size.0 as f32 + 0.2))
-        //     .h(self.cell_size * (self.warehouse.size.1 as f32 + 0.2));
+        drawing
+            .rect()
+            .color(BLACK)
+            .x_y(self.position.0, self.position.1)
+            .w(self.cell_size * (self.warehouse.size.0 as f32 + 0.2))
+            .h(self.cell_size * (self.warehouse.size.1 as f32 + 0.2));
 
         for i in 0..self.warehouse.size.0 {
             for j in 0..self.warehouse.size.1 {
@@ -309,18 +318,23 @@ impl WarehouseSim {
     fn draw_all_robot_paths(&self, time: f32, drawing: &nannou::draw::Draw) {
         let diameter = 0.7 * self.cell_size;
 
-        let mut paths_in_node = std::collections::HashMap::new();
-
         // The current turn, which is the point in the path in which the robot is,
         // starts at 0 at start_time and increses by "speed" each second.
-        let current_turn = time * self.speed;
+        let current_turn = (time * self.speed).floor() as usize;
+        let alpha = time * self.speed - current_turn as f32;
 
-        for (robot_index, path) in self.paths.iter().enumerate() {
-            let im_path = self.generate_path_segments(robot_index, &mut paths_in_node, time);
-            // println!("Path:\n{:?}\nIm path:\n{:?}\n\n", path, im_path);
-            for x in im_path.windows(2) {
-                let start = self.fnode_to_coord(&x[0].0);
+        for (robot_index, im_path) in self.drawn_paths.iter().enumerate() {
+            for (i, x) in im_path.windows(2).skip(current_turn).enumerate() {
+                let mut start = self.fnode_to_coord(&x[0].0);
                 let end = self.fnode_to_coord(&x[1].0);
+
+                if i == 0 {
+                    start = (
+                        (start.0 * (1.0 - alpha) + end.0 * alpha),
+                        (start.1 * (1.0 - alpha) + end.1 * alpha),
+                    );
+                }
+
                 let colour = x[1].1;
 
                 if start == end {
