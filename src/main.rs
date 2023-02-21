@@ -15,7 +15,10 @@ fn main() {
 }
 
 const DEFAULT_SPEED: f32 = 2.0;
+
 const Y_POS: [f32; 5] = [-400.0, -200.0, 0.0, 200.0, 400.0];
+const X_POS: [f32; 4] = [-200.0, 0.0, 200.0, 400.0];
+const LOOKAHEAD_VISUAL_SIZE: f32 = 100.0;
 
 struct Model {
     wait_time: Option<f32>,
@@ -48,7 +51,7 @@ impl Model {
                     Some(new_paths) => {
                         let mut drawhouse = WarehouseSim::new(
                             warehouse.clone(),
-                            (200.0, Y_POS[i]),
+                            (X_POS[2], Y_POS[i]),
                             20.0,
                             new_paths,
                             DEFAULT_SPEED,
@@ -69,7 +72,7 @@ impl Model {
             .map(|(i, w)| {
                 let Some(w) = w else { return None };
                 let mut w: WarehouseSim = w.clone();
-                w.adjust_for_path([-100.0, Y_POS[i] - 200.0, 0.0, Y_POS[i] + 200.0]);
+                w.adjust_for_path((X_POS[1], Y_POS[i]), LOOKAHEAD_VISUAL_SIZE);
                 Some(w)
             })
             .collect();
@@ -82,7 +85,7 @@ impl Model {
     }
 
     fn save_best_policy(&mut self) {
-        let best_index = self
+        let mut best_index = self
             .alternatives
             .iter()
             .enumerate()
@@ -91,43 +94,44 @@ impl Model {
             .unwrap()
             .0;
 
+        let no_change_index = self
+            .alternatives
+            .iter()
+            .position(|p| {
+                let Some(p) = p.as_ref() else { return false };
+                let original_continuation =
+                    self.base_waresim.get_paths()[self.robot_in_improvement].a_star[0];
+                let alternative_continuation =
+                    p.get_paths()[self.robot_in_improvement].lookahead[0];
+                original_continuation == alternative_continuation
+            })
+            .unwrap();
+
         let improved_cost = self.alternatives[best_index]
             .as_ref()
             .unwrap()
             .get_current_cost();
 
+        if improved_cost == self.base_cost {
+            println!("Prev index: {}", best_index);
+            best_index = no_change_index;
+            println!("New index: {}", best_index);
+        }
+
         println!("The Best Cost: {}", improved_cost);
 
-        if improved_cost == self.base_cost {}
-
-        let best_policy = if improved_cost == self.base_cost {
-            let mut original_policy = self.base_waresim.get_paths().to_owned();
-
-            let upgraded_path = &mut original_policy[self.robot_in_improvement];
-            let a_star = &mut upgraded_path.a_star;
-            let new_a_star = a_star.split_off(1);
-            upgraded_path.improved_path.append(a_star);
-            upgraded_path.a_star = new_a_star;
-            original_policy
-        } else {
-            let mut policy = self.alternatives[best_index]
-                .as_ref()
-                .unwrap()
-                .get_paths()
-                .to_owned();
-            policy.iter_mut().for_each(|p| p.integrate_lookahead());
-            policy
-        };
+        let mut best_policy = self.alternatives[best_index]
+            .as_ref()
+            .unwrap()
+            .get_paths()
+            .to_owned();
+        best_policy.iter_mut().for_each(|p| p.integrate_lookahead());
 
         self.base_cost = improved_cost;
 
-        // for path in best_policy.iter() {
-        //     println!("{:?}", path)
-        // }
-
         self.base_waresim = WarehouseSim::new(
             self.warehouse.clone(),
-            (-300.0, 50.0),
+            (X_POS[0], Y_POS[2]),
             20.0,
             best_policy,
             DEFAULT_SPEED,
@@ -151,7 +155,7 @@ fn initialize_model(_app: &App) -> Model {
 
     let drawhouse = WarehouseSim::new(
         warehouse.clone(),
-        (-300.0, 50.0),
+        (X_POS[0], Y_POS[2]),
         20.0,
         paths,
         DEFAULT_SPEED,
@@ -198,6 +202,7 @@ fn update(_app: &App, model: &mut Model, update: Update) {
 }
 
 fn view(app: &App, model: &Model, frame: Frame) {
+    frame.clear(GRAY);
     let draw = app.draw();
     draw.background().color(GRAY);
 
@@ -205,23 +210,32 @@ fn view(app: &App, model: &Model, frame: Frame) {
     model
         .alternatives
         .iter()
-        .filter_map(|x| x.as_ref())
-        .for_each(|w| {
+        .enumerate()
+        .filter_map(|(i, x)| x.as_ref().map(|x| (i, x)))
+        .for_each(|(i, w)| {
             w.draw(&draw);
-            w.draw_cost(4, &draw)
+            w.draw_cost((X_POS[3], Y_POS[i]), &draw);
         });
 
     let lookahead_turn = model.base_waresim.get_paths()[model.robot_in_improvement]
         .improved_path
         .len();
 
+    const LOOKAHEADS: [&str; 5] = ["Wait", "Go up", "Go right", "Go down", "Go left"];
     model
         .alternative_paths
         .iter()
-        .filter_map(|x| x.as_ref())
-        .for_each(|w| {
-            w.draw_robot(model.robot_in_improvement, 0.0, &draw);
-            w.draw_robot_path(model.robot_in_improvement, 0.0, Some(lookahead_turn), &draw);
+        .enumerate()
+        .for_each(|(i, w)| {
+            draw.text(LOOKAHEADS[i])
+                .x_y(X_POS[1], Y_POS[i] + LOOKAHEAD_VISUAL_SIZE / 2.0);
+
+            if let Some(w) = w {
+                w.draw_robot(model.robot_in_improvement, 0.0, &draw);
+                w.draw_robot_path(model.robot_in_improvement, 0.0, Some(lookahead_turn), &draw);
+            } else {
+                draw.text("Unfeasible").x_y(X_POS[1], Y_POS[i]);
+            }
         });
 
     draw.to_frame(app, &frame).unwrap();

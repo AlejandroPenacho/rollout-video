@@ -158,7 +158,7 @@ impl WarehouseSim {
         warehouse_sim
     }
 
-    pub fn adjust_for_path(&mut self, bounding_box: [f32; 4]) {
+    pub fn adjust_for_path(&mut self, coord: (f32, f32), max_size: f32) {
         let agent_path = self.paths.iter().find(|p| !p.lookahead.is_empty()).unwrap();
         let path: Vec<(i32, i32)> = agent_path
             .improved_path
@@ -167,32 +167,31 @@ impl WarehouseSim {
             .copied()
             .collect();
 
+        let ref_point = (
+            agent_path.improved_path.iter().last().unwrap().0 as f32,
+            agent_path.improved_path.iter().last().unwrap().1 as f32,
+        );
+
         let min_x = path.iter().map(|x| x.0).min().unwrap() as f32;
         let min_y = path.iter().map(|x| x.1).min().unwrap() as f32;
         let max_x = path.iter().map(|x| x.0).max().unwrap() as f32;
         let max_y = path.iter().map(|x| x.1).max().unwrap() as f32;
 
-        let x_size = bounding_box[2] - bounding_box[0];
-        let y_size = bounding_box[3] - bounding_box[1];
-        let cell_size_x = x_size / (max_x - min_x).min(self.cell_size) as f32;
-        let cell_size_y = y_size / (max_y - min_y).min(self.cell_size) as f32;
+        let cell_size_x = max_size / (max_x - min_x).min(self.cell_size) as f32;
+        let cell_size_y = max_size / (max_y - min_y).min(self.cell_size) as f32;
 
         let cell_size = cell_size_x.min(cell_size_y).min(self.cell_size);
 
-        let bounding_center = (
-            (bounding_box[2] + bounding_box[0]) / 2.0,
-            (bounding_box[3] + bounding_box[1]) / 2.0,
-        );
-        let path_center = ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
+        let bounding_center = coord;
         let central_node = (
-            self.warehouse.size.0 as f32 / 2.0,
-            self.warehouse.size.1 as f32 / 2.0,
+            self.warehouse.size.0 as f32 / 2.0 - 0.5,
+            self.warehouse.size.1 as f32 / 2.0 - 0.5,
         );
 
         self.cell_size = cell_size;
         self.position = (
-            bounding_center.0 - (path_center.0 - central_node.0) * cell_size,
-            bounding_center.1 - (path_center.1 - central_node.1) * cell_size,
+            bounding_center.0 - (ref_point.0 - central_node.0) * cell_size,
+            bounding_center.1 - (ref_point.1 - central_node.1) * cell_size,
         );
 
         // println!(
@@ -223,11 +222,6 @@ impl WarehouseSim {
     pub fn get_paths(&self) -> &[AgentPath] {
         &self.paths
     }
-
-    pub fn get_mut_paths(&mut self) -> &mut [AgentPath] {
-        &mut self.paths
-    }
-
     fn fnode_to_coord(&self, node: &(f32, f32)) -> (f32, f32) {
         let base_node = (
             self.position.0 - self.cell_size * ((self.warehouse.size.0 - 1) as f32 / 2.0),
@@ -328,18 +322,11 @@ impl WarehouseSim {
         self.run_time += delta_time;
     }
 
-    pub fn draw_cost(&self, sep: i32, drawing: &nannou::draw::Draw) {
-        let eq_node = (
-            (self.warehouse.size.0 + sep) as f32,
-            self.warehouse.size.1 as f32 / 2.0,
-        );
-
-        let position = self.fnode_to_coord(&eq_node);
-
+    pub fn draw_cost(&self, coord: (f32, f32), drawing: &nannou::draw::Draw) {
         drawing
             .text(&format!("{}", self.get_current_cost()))
             .font_size(self.cell_size as u32)
-            .x_y(position.0, position.1);
+            .x_y(coord.0, coord.1);
     }
 
     pub fn draw(&self, drawing: &nannou::draw::Draw) {

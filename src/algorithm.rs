@@ -30,9 +30,13 @@ pub fn improve_policy(
                 return None;
             }
 
-            let a_star_path = obtain_a_star_path(warehouse, &lookahead_node, target_node)
-                .unwrap()
-                .split_off(1);
+            let a_star_path = if lookahead_node == new_policy[agent].a_star[0] {
+                new_policy[agent].a_star.split_off(1)
+            } else {
+                obtain_a_star_path(warehouse, &lookahead_node, target_node)
+                    .unwrap()
+                    .split_off(1)
+            };
 
             new_policy[agent].lookahead = vec![lookahead_node];
             new_policy[agent].a_star = a_star_path;
