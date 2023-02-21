@@ -15,7 +15,7 @@ fn main() {
 }
 
 const DEFAULT_SPEED: f32 = 2.0;
-const Y_POS: [f32; 5] = [-200.0, 0.0, 200.0, 400.0, 600.0];
+const Y_POS: [f32; 5] = [-400.0, -200.0, 0.0, 200.0, 400.0];
 
 struct Model {
     wait_time: Option<f32>,
@@ -23,6 +23,7 @@ struct Model {
     base_waresim: WarehouseSim,
     base_cost: i32,
     alternatives: Vec<Option<WarehouseSim>>,
+    alternative_paths: Vec<Option<WarehouseSim>>,
     robot_in_improvement: usize,
 }
 
@@ -60,6 +61,18 @@ impl Model {
                 .collect();
         self.alternatives = alternatives;
         self.wait_time = Some(1.0);
+
+        self.alternative_paths = self
+            .alternatives
+            .iter()
+            .enumerate()
+            .map(|(i, w)| {
+                let Some(w) = w else { return None };
+                let mut w: WarehouseSim = w.clone();
+                w.adjust_for_path([-100.0, Y_POS[i] - 200.0, 0.0, Y_POS[i] + 200.0]);
+                Some(w)
+            })
+            .collect();
     }
 
     fn check_completion(&self) -> bool {
@@ -74,7 +87,7 @@ impl Model {
             .iter()
             .enumerate()
             .filter_map(|(i, x)| x.as_ref().map(|w| (i, w.get_current_cost())))
-            .min()
+            .min_by_key(|(_, x)| *x)
             .unwrap()
             .0;
 
@@ -83,27 +96,38 @@ impl Model {
             .unwrap()
             .get_current_cost();
 
-        if improved_cost == self.base_cost {
-            return;
-        }
+        println!("The Best Cost: {}", improved_cost);
+
+        if improved_cost == self.base_cost {}
+
+        let best_policy = if improved_cost == self.base_cost {
+            let mut original_policy = self.base_waresim.get_paths().to_owned();
+
+            let upgraded_path = &mut original_policy[self.robot_in_improvement];
+            let a_star = &mut upgraded_path.a_star;
+            let new_a_star = a_star.split_off(1);
+            upgraded_path.improved_path.append(a_star);
+            upgraded_path.a_star = new_a_star;
+            original_policy
+        } else {
+            let mut policy = self.alternatives[best_index]
+                .as_ref()
+                .unwrap()
+                .get_paths()
+                .to_owned();
+            policy.iter_mut().for_each(|p| p.integrate_lookahead());
+            policy
+        };
 
         self.base_cost = improved_cost;
 
-        let mut best_policy = self.alternatives[best_index]
-            .as_ref()
-            .unwrap()
-            .get_paths()
-            .to_owned();
-
-        best_policy.iter_mut().for_each(|p| p.integrate_lookahead());
-
-        for path in best_policy.iter() {
-            println!("{:?}", path)
-        }
+        // for path in best_policy.iter() {
+        //     println!("{:?}", path)
+        // }
 
         self.base_waresim = WarehouseSim::new(
             self.warehouse.clone(),
-            (-200.0, 50.0),
+            (-300.0, 50.0),
             20.0,
             best_policy,
             DEFAULT_SPEED,
@@ -127,7 +151,7 @@ fn initialize_model(_app: &App) -> Model {
 
     let drawhouse = WarehouseSim::new(
         warehouse.clone(),
-        (-200.0, 50.0),
+        (-300.0, 50.0),
         20.0,
         paths,
         DEFAULT_SPEED,
@@ -138,6 +162,7 @@ fn initialize_model(_app: &App) -> Model {
         base_cost: 0,
         base_waresim: drawhouse,
         alternatives: vec![],
+        alternative_paths: vec![],
         robot_in_improvement: 0,
         wait_time: None,
     };
@@ -181,7 +206,23 @@ fn view(app: &App, model: &Model, frame: Frame) {
         .alternatives
         .iter()
         .filter_map(|x| x.as_ref())
-        .for_each(|w| w.draw(&draw));
+        .for_each(|w| {
+            w.draw(&draw);
+            w.draw_cost(4, &draw)
+        });
+
+    let lookahead_turn = model.base_waresim.get_paths()[model.robot_in_improvement]
+        .improved_path
+        .len();
+
+    model
+        .alternative_paths
+        .iter()
+        .filter_map(|x| x.as_ref())
+        .for_each(|w| {
+            w.draw_robot(model.robot_in_improvement, 0.0, &draw);
+            w.draw_robot_path(model.robot_in_improvement, 0.0, Some(lookahead_turn), &draw);
+        });
 
     draw.to_frame(app, &frame).unwrap();
 }

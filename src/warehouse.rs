@@ -33,6 +33,7 @@ pub struct Warehouse {
     walls: HashSet<Node>,
 }
 
+#[derive(Clone)]
 pub struct WarehouseSim {
     warehouse: Warehouse,
     position: (f32, f32),
@@ -75,6 +76,7 @@ impl AgentPath {
     }
 }
 
+#[derive(Clone)]
 struct TextBubble {
     text: String,
     color: (f32, f32, f32),
@@ -156,6 +158,53 @@ impl WarehouseSim {
         warehouse_sim
     }
 
+    pub fn adjust_for_path(&mut self, bounding_box: [f32; 4]) {
+        let agent_path = self.paths.iter().find(|p| !p.lookahead.is_empty()).unwrap();
+        let path: Vec<(i32, i32)> = agent_path
+            .improved_path
+            .iter()
+            .chain(agent_path.lookahead.iter())
+            .copied()
+            .collect();
+
+        let min_x = path.iter().map(|x| x.0).min().unwrap() as f32;
+        let min_y = path.iter().map(|x| x.1).min().unwrap() as f32;
+        let max_x = path.iter().map(|x| x.0).max().unwrap() as f32;
+        let max_y = path.iter().map(|x| x.1).max().unwrap() as f32;
+
+        let x_size = bounding_box[2] - bounding_box[0];
+        let y_size = bounding_box[3] - bounding_box[1];
+        let cell_size_x = x_size / (max_x - min_x).min(self.cell_size) as f32;
+        let cell_size_y = y_size / (max_y - min_y).min(self.cell_size) as f32;
+
+        let cell_size = cell_size_x.min(cell_size_y).min(self.cell_size);
+
+        let bounding_center = (
+            (bounding_box[2] + bounding_box[0]) / 2.0,
+            (bounding_box[3] + bounding_box[1]) / 2.0,
+        );
+        let path_center = ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
+        let central_node = (
+            self.warehouse.size.0 as f32 / 2.0,
+            self.warehouse.size.1 as f32 / 2.0,
+        );
+
+        self.cell_size = cell_size;
+        self.position = (
+            bounding_center.0 - (path_center.0 - central_node.0) * cell_size,
+            bounding_center.1 - (path_center.1 - central_node.1) * cell_size,
+        );
+
+        // println!(
+        //     "Adjustment completed:\n\n\
+        //     \tPath:\n{:?}\n\n\
+        //     Bounding box:\n{:?}\n\n\
+        //     Cell size:\n{:?}\n\n\
+        //     Position:\n{:?}\n\n\n\n",
+        //     path, bounding_box, self.cell_size, self.position
+        // );
+    }
+
     pub fn is_finished(&self) -> bool {
         let turn = (self.run_time * self.speed).floor() as usize;
         self.paths
@@ -173,6 +222,10 @@ impl WarehouseSim {
 
     pub fn get_paths(&self) -> &[AgentPath] {
         &self.paths
+    }
+
+    pub fn get_mut_paths(&mut self) -> &mut [AgentPath] {
+        &mut self.paths
     }
 
     fn fnode_to_coord(&self, node: &(f32, f32)) -> (f32, f32) {
@@ -275,6 +328,20 @@ impl WarehouseSim {
         self.run_time += delta_time;
     }
 
+    pub fn draw_cost(&self, sep: i32, drawing: &nannou::draw::Draw) {
+        let eq_node = (
+            (self.warehouse.size.0 + sep) as f32,
+            self.warehouse.size.1 as f32 / 2.0,
+        );
+
+        let position = self.fnode_to_coord(&eq_node);
+
+        drawing
+            .text(&format!("{}", self.get_current_cost()))
+            .font_size(self.cell_size as u32)
+            .x_y(position.0, position.1);
+    }
+
     pub fn draw(&self, drawing: &nannou::draw::Draw) {
         self.draw_warehouse(drawing);
         self.draw_all_robot_paths(self.run_time, drawing);
@@ -315,69 +382,86 @@ impl WarehouseSim {
         }
     }
 
-    fn draw_all_robot_paths(&self, time: f32, drawing: &nannou::draw::Draw) {
+    pub fn draw_robot_path(
+        &self,
+        agent_index: usize,
+        time: f32,
+        end_turn: Option<usize>,
+        drawing: &nannou::draw::Draw,
+    ) {
+        let im_path = &self.drawn_paths[agent_index];
+
         // The current turn, which is the point in the path in which the robot is,
         // starts at 0 at start_time and increses by "speed" each second.
         let current_turn = (time * self.speed).floor() as usize;
         let alpha = time * self.speed - current_turn as f32;
 
-        for (_robot_index, im_path) in self.drawn_paths.iter().enumerate() {
-            for (i, x) in im_path.windows(2).skip(current_turn).enumerate() {
-                let mut start = self.fnode_to_coord(&x[0].0);
-                let end = self.fnode_to_coord(&x[1].0);
+        let last_turn = end_turn.unwrap_or(im_path.len() - 1);
 
-                let colour = x[1].1;
+        for (i, x) in im_path
+            .windows(2)
+            .take(last_turn)
+            .skip(current_turn)
+            .enumerate()
+        {
+            let mut start = self.fnode_to_coord(&x[0].0);
+            let end = self.fnode_to_coord(&x[1].0);
 
-                // Chech that they are aligned. If not, create a small 90 deg.
-                // corner to fix it, moving the start
-                if start.0 != end.0 && start.1 != end.1 {
-                    let x_dif = (start.0 - end.0).abs();
-                    let y_dif = (start.1 - end.1).abs();
+            let colour = x[1].1;
 
-                    if x_dif < y_dif {
-                        drawing
-                            .line()
-                            .start(pt2(start.0, start.1))
-                            .end(pt2(end.0, start.1))
-                            .weight(self.cell_size / 8.0)
-                            .color(colour);
-                        start.0 = end.0;
-                    } else {
-                        drawing
-                            .line()
-                            .start(pt2(start.0, start.1))
-                            .end(pt2(start.0, end.1))
-                            .weight(self.cell_size / 8.0)
-                            .color(colour);
-                        start.1 = end.1;
-                    }
-                }
+            // Chech that they are aligned. If not, create a small 90 deg.
+            // corner to fix it, moving the start
+            if start.0 != end.0 && start.1 != end.1 {
+                let x_dif = (start.0 - end.0).abs();
+                let y_dif = (start.1 - end.1).abs();
 
-                if i == 0 {
-                    start = (
-                        (start.0 * (1.0 - alpha) + end.0 * alpha),
-                        (start.1 * (1.0 - alpha) + end.1 * alpha),
-                    );
-                }
-
-                if start == end {
+                if x_dif < y_dif {
                     drawing
-                        .text("Zzz")
-                        .x_y(start.0, start.1 + self.cell_size * 0.2)
+                        .line()
+                        .start(pt2(start.0, start.1))
+                        .end(pt2(end.0, start.1))
+                        .weight(self.cell_size / 8.0)
                         .color(colour);
+                    start.0 = end.0;
                 } else {
                     drawing
                         .line()
                         .start(pt2(start.0, start.1))
-                        .end(pt2(end.0, end.1))
+                        .end(pt2(start.0, end.1))
                         .weight(self.cell_size / 8.0)
                         .color(colour);
+                    start.1 = end.1;
                 }
+            }
+
+            if i == 0 {
+                start = (
+                    (start.0 * (1.0 - alpha) + end.0 * alpha),
+                    (start.1 * (1.0 - alpha) + end.1 * alpha),
+                );
+            }
+
+            if start == end {
+                drawing
+                    .text("Zzz")
+                    .x_y(start.0, start.1 + self.cell_size * 0.2)
+                    .color(colour);
+            } else {
+                drawing
+                    .line()
+                    .start(pt2(start.0, start.1))
+                    .end(pt2(end.0, end.1))
+                    .weight(self.cell_size / 8.0)
+                    .color(colour);
             }
         }
     }
 
-    fn draw_robot(&self, robot_index: usize, time: f32, drawing: &nannou::draw::Draw) {
+    fn draw_all_robot_paths(&self, time: f32, drawing: &nannou::draw::Draw) {
+        (0..self.paths.len()).for_each(|i| self.draw_robot_path(i, time, None, drawing));
+    }
+
+    pub fn draw_robot(&self, robot_index: usize, time: f32, drawing: &nannou::draw::Draw) {
         let diameter = 0.7 * self.cell_size;
 
         let current_node = self.get_robot_position(robot_index, time);
