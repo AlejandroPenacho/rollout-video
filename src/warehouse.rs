@@ -20,11 +20,36 @@ pub type Node = (i32, i32);
 
 type StdColour = nannou::color::rgb::Rgb<nannou::color::encoding::Srgb, u8>;
 
-const WALL_COLOR: StdColour = BLACK;
-const NODE_COLOR_1: StdColour = CORAL;
-const NODE_COLOR_2: StdColour = CORNFLOWERBLUE;
+enum ColorCollection {
+    DARK,
+    LIGHT,
+    GRAY,
+}
+
+fn get_colour(collection: ColorCollection, index: usize) -> StdColour {
+    use ColorCollection::*;
+    match collection {
+        DARK => [
+            StdColour::new(0, 45, 90),
+            StdColour::new(154, 9, 50),
+            StdColour::new(64, 102, 24),
+            StdColour::new(235, 105, 0),
+        ][index],
+        LIGHT => [
+            StdColour::new(0, 174, 239),
+            StdColour::new(225, 5, 109),
+            StdColour::new(102, 190, 0),
+            StdColour::new(255, 212, 0),
+        ][index],
+        GRAY => [
+            StdColour::new(224, 222, 217),
+            StdColour::new(167, 157, 150),
+            StdColour::new(104, 92, 83),
+        ][index],
+    }
+}
+
 const LOOKAHEAD_COLOUR: StdColour = GREEN;
-const ASTAR_COLOUR: StdColour = RED;
 const COLLISION_COST: i32 = 200;
 
 #[derive(Clone)]
@@ -353,11 +378,11 @@ impl WarehouseSim {
             for j in 0..self.warehouse.size.1 {
                 let (x, y) = self.inode_to_coord(&(i, j));
                 let color = if self.warehouse.walls.contains(&(i, j)) {
-                    WALL_COLOR
+                    BLACK
                 } else if (i + j) % 2 == 0 {
-                    NODE_COLOR_1
+                    get_colour(ColorCollection::GRAY, 0)
                 } else {
-                    NODE_COLOR_2
+                    get_colour(ColorCollection::GRAY, 1)
                 };
                 drawing
                     .rect()
@@ -457,7 +482,7 @@ impl WarehouseSim {
         let colour = if self.collisions[robot_index].iter().any(|&x| x) {
             ORANGE
         } else {
-            GREEN
+            get_colour(ColorCollection::DARK, robot_index)
         };
 
         drawing
@@ -499,9 +524,13 @@ impl WarehouseSim {
         let mut path_iterator = path
             .improved_path
             .iter()
-            .map(|&n| (n, ORANGE))
+            .map(|&n| (n, get_colour(ColorCollection::DARK, agent_index)))
             .chain(path.lookahead.iter().map(|&n| (n, LOOKAHEAD_COLOUR)))
-            .chain(path.a_star.iter().map(|&n| (n, ASTAR_COLOUR)))
+            .chain(
+                path.a_star
+                    .iter()
+                    .map(|&n| (n, get_colour(ColorCollection::LIGHT, agent_index))),
+            )
             .skip(current_turn.floor() as usize);
 
         let Some(buffer_first_virtual_element ) = path_iterator.next() else { return vec![] };

@@ -39,6 +39,12 @@ enum Stage {
     PickBest,
 }
 
+impl Stage {
+    fn get_duration(&self) -> Option<f32> {
+        None
+    }
+}
+
 impl Model {
     fn generate_alternatives(&mut self) {
         let warehouse = &self.warehouse;
