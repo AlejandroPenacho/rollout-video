@@ -1,11 +1,10 @@
 mod algorithm;
 mod warehouse;
 
-use warehouse::{AgentPath, Warehouse, WarehouseSim};
+use warehouse::{Warehouse, WarehouseSim};
 
 use nannou::prelude::*;
 
-use core::panic;
 use std::collections::HashSet;
 
 fn main() {
@@ -22,28 +21,41 @@ struct Model {
     wait_time: Option<f32>,
     warehouse: Warehouse,
     base_waresim: WarehouseSim,
-    alternatives: Vec<WarehouseSim>,
+    base_cost: i32,
+    alternatives: Vec<Option<WarehouseSim>>,
     robot_in_improvement: usize,
+}
+
+enum Stage {
+    InitialWait,
+    GenerateLookaheads,
+    CreateWarehouses,
+    AddRollout,
+    Simulate,
+    PickBest,
 }
 
 impl Model {
     fn generate_alternatives(&mut self) {
         let warehouse = &self.warehouse;
         let paths = self.base_waresim.get_paths();
-        let alternatives: Vec<WarehouseSim> =
+        let alternatives: Vec<Option<WarehouseSim>> =
             algorithm::improve_policy(warehouse, paths, self.robot_in_improvement)
                 .into_iter()
                 .enumerate()
-                .map(|(i, new_paths)| {
-                    let mut drawhouse = WarehouseSim::new(
-                        warehouse.clone(),
-                        (200.0, Y_POS[i]),
-                        20.0,
-                        new_paths,
-                        DEFAULT_SPEED,
-                    );
-                    drawhouse.toggle_running(false);
-                    drawhouse
+                .map(|(i, new_paths)| match new_paths {
+                    Some(new_paths) => {
+                        let mut drawhouse = WarehouseSim::new(
+                            warehouse.clone(),
+                            (200.0, Y_POS[i]),
+                            20.0,
+                            new_paths,
+                            DEFAULT_SPEED,
+                        );
+                        drawhouse.toggle_running(false);
+                        Some(drawhouse)
+                    }
+                    None => None,
                 })
                 .collect();
         self.alternatives = alternatives;
@@ -51,14 +63,34 @@ impl Model {
     }
 
     fn check_completion(&self) -> bool {
-        self.alternatives.iter().all(|w| w.is_finished())
+        self.alternatives
+            .iter()
+            .all(|w| w.as_ref().map_or(true, |w| w.is_finished()))
     }
 
     fn save_best_policy(&mut self) {
-        let mut best_policy = self
+        let best_index = self
             .alternatives
             .iter()
-            .min_by_key(|w| w.get_current_cost())
+            .enumerate()
+            .filter_map(|(i, x)| x.as_ref().map(|w| (i, w.get_current_cost())))
+            .min()
+            .unwrap()
+            .0;
+
+        let improved_cost = self.alternatives[best_index]
+            .as_ref()
+            .unwrap()
+            .get_current_cost();
+
+        if improved_cost == self.base_cost {
+            return;
+        }
+
+        self.base_cost = improved_cost;
+
+        let mut best_policy = self.alternatives[best_index]
+            .as_ref()
             .unwrap()
             .get_paths()
             .to_owned();
@@ -103,6 +135,7 @@ fn initialize_model(_app: &App) -> Model {
 
     let mut model = Model {
         warehouse,
+        base_cost: 0,
         base_waresim: drawhouse,
         alternatives: vec![],
         robot_in_improvement: 0,
@@ -117,6 +150,7 @@ fn update(_app: &App, model: &mut Model, update: Update) {
     model
         .alternatives
         .iter_mut()
+        .filter_map(|x| x.as_mut())
         .for_each(|w| w.update_time(update.since_last.as_secs_f32()));
 
     if let Some(t) = model.wait_time.as_mut() {
@@ -132,6 +166,7 @@ fn update(_app: &App, model: &mut Model, update: Update) {
         model
             .alternatives
             .iter_mut()
+            .filter_map(|x| x.as_mut())
             .for_each(|w| w.toggle_running(true));
         model.wait_time = None;
     }
@@ -142,7 +177,11 @@ fn view(app: &App, model: &Model, frame: Frame) {
     draw.background().color(GRAY);
 
     model.base_waresim.draw(&draw);
-    model.alternatives.iter().for_each(|w| w.draw(&draw));
+    model
+        .alternatives
+        .iter()
+        .filter_map(|x| x.as_ref())
+        .for_each(|w| w.draw(&draw));
 
     draw.to_frame(app, &frame).unwrap();
 }

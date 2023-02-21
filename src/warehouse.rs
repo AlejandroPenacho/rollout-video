@@ -177,8 +177,8 @@ impl WarehouseSim {
 
     fn fnode_to_coord(&self, node: &(f32, f32)) -> (f32, f32) {
         let base_node = (
-            self.position.0 - self.cell_size * (self.warehouse.size.0 as f32 / 2.0),
-            self.position.1 - self.cell_size * (self.warehouse.size.1 as f32 / 2.0),
+            self.position.0 - self.cell_size * ((self.warehouse.size.0 - 1) as f32 / 2.0),
+            self.position.1 - self.cell_size * ((self.warehouse.size.1 - 1) as f32 / 2.0),
         );
 
         (
@@ -316,14 +316,12 @@ impl WarehouseSim {
     }
 
     fn draw_all_robot_paths(&self, time: f32, drawing: &nannou::draw::Draw) {
-        let diameter = 0.7 * self.cell_size;
-
         // The current turn, which is the point in the path in which the robot is,
         // starts at 0 at start_time and increses by "speed" each second.
         let current_turn = (time * self.speed).floor() as usize;
         let alpha = time * self.speed - current_turn as f32;
 
-        for (robot_index, im_path) in self.drawn_paths.iter().enumerate() {
+        for (_robot_index, im_path) in self.drawn_paths.iter().enumerate() {
             for (i, x) in im_path.windows(2).skip(current_turn).enumerate() {
                 let mut start = self.fnode_to_coord(&x[0].0);
                 let end = self.fnode_to_coord(&x[1].0);

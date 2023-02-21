@@ -17,10 +17,10 @@ pub fn improve_policy(
     warehouse: &Warehouse,
     current_policy: &[AgentPath],
     agent: usize,
-) -> Vec<Vec<AgentPath>> {
+) -> Vec<Option<Vec<AgentPath>>> {
     [(0, 0), (0, 1), (1, 0), (0, -1), (-1, 0)]
         .iter()
-        .filter_map(|delta| {
+        .map(|delta| {
             let mut new_policy: Vec<AgentPath> = current_policy.to_owned();
             let initial_node = current_policy[agent].improved_path.iter().last().unwrap();
             let target_node = new_policy[agent].get_path_iterator().last().unwrap();
