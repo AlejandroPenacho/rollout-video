@@ -59,10 +59,34 @@ pub struct Warehouse {
 }
 
 #[derive(Clone)]
-pub struct WarehouseSim {
-    warehouse: Warehouse,
+pub struct WareSimLocation {
     position: (f32, f32),
     cell_size: f32,
+}
+
+impl WareSimLocation {
+    pub fn new(position: (f32, f32), cell_size: f32) -> Self {
+        Self {
+            position,
+            cell_size,
+        }
+    }
+
+    pub fn interpolate(&self, other: &Self, alpha: f32) -> Self {
+        Self {
+            position: (
+                self.position.0 * (1.0 - alpha) + other.position.0 * alpha,
+                self.position.1 * (1.0 - alpha) + other.position.1 * alpha,
+            ),
+            cell_size: self.cell_size * (1.0 - alpha) + other.cell_size * alpha,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct WarehouseSim {
+    warehouse: Warehouse,
+    location: WareSimLocation,
     paths: Vec<AgentPath>,
     drawn_paths: Vec<Vec<((f32, f32), StdColour)>>,
     running: bool,
@@ -155,16 +179,14 @@ impl Warehouse {
 impl WarehouseSim {
     pub fn new(
         warehouse: Warehouse,
-        position: (f32, f32),
-        cell_size: f32,
+        location: WareSimLocation,
         paths: Vec<AgentPath>,
         speed: f32,
     ) -> Self {
         let n_robots = paths.len();
         let mut warehouse_sim = WarehouseSim {
             warehouse,
-            position,
-            cell_size,
+            location,
             running: false,
             paths,
             drawn_paths: vec![],
@@ -202,10 +224,10 @@ impl WarehouseSim {
         let max_x = path.iter().map(|x| x.0).max().unwrap() as f32;
         let max_y = path.iter().map(|x| x.1).max().unwrap() as f32;
 
-        let cell_size_x = max_size / (max_x - min_x).min(self.cell_size) as f32;
-        let cell_size_y = max_size / (max_y - min_y).min(self.cell_size) as f32;
+        let cell_size_x = max_size / (max_x - min_x).min(self.location.cell_size) as f32;
+        let cell_size_y = max_size / (max_y - min_y).min(self.location.cell_size) as f32;
 
-        let cell_size = cell_size_x.min(cell_size_y).min(self.cell_size);
+        let cell_size = cell_size_x.min(cell_size_y).min(self.location.cell_size);
 
         let bounding_center = coord;
         let central_node = (
@@ -213,8 +235,8 @@ impl WarehouseSim {
             self.warehouse.size.1 as f32 / 2.0 - 0.5,
         );
 
-        self.cell_size = cell_size;
-        self.position = (
+        self.location.cell_size = cell_size;
+        self.location.position = (
             bounding_center.0 - (ref_point.0 - central_node.0) * cell_size,
             bounding_center.1 - (ref_point.1 - central_node.1) * cell_size,
         );
@@ -240,6 +262,14 @@ impl WarehouseSim {
         self.cumulative_cost
     }
 
+    pub fn get_location(&self) -> &WareSimLocation {
+        &self.location
+    }
+
+    pub fn set_location(&mut self, new_location: WareSimLocation) {
+        self.location = new_location;
+    }
+
     pub fn toggle_running(&mut self, running: bool) {
         self.running = running;
     }
@@ -249,13 +279,15 @@ impl WarehouseSim {
     }
     fn fnode_to_coord(&self, node: &(f32, f32)) -> (f32, f32) {
         let base_node = (
-            self.position.0 - self.cell_size * ((self.warehouse.size.0 - 1) as f32 / 2.0),
-            self.position.1 - self.cell_size * ((self.warehouse.size.1 - 1) as f32 / 2.0),
+            self.location.position.0
+                - self.location.cell_size * ((self.warehouse.size.0 - 1) as f32 / 2.0),
+            self.location.position.1
+                - self.location.cell_size * ((self.warehouse.size.1 - 1) as f32 / 2.0),
         );
 
         (
-            base_node.0 + node.0 * self.cell_size,
-            base_node.1 + node.1 * self.cell_size,
+            base_node.0 + node.0 * self.location.cell_size,
+            base_node.1 + node.1 * self.location.cell_size,
         )
     }
 
@@ -350,7 +382,7 @@ impl WarehouseSim {
     pub fn draw_cost(&self, coord: (f32, f32), drawing: &nannou::draw::Draw) {
         drawing
             .text(&format!("{}", self.get_current_cost()))
-            .font_size(self.cell_size as u32)
+            .font_size(self.location.cell_size as u32)
             .x_y(coord.0, coord.1);
     }
 
@@ -366,13 +398,13 @@ impl WarehouseSim {
         }
     }
 
-    fn draw_warehouse(&self, drawing: &nannou::draw::Draw) {
+    pub fn draw_warehouse(&self, drawing: &nannou::draw::Draw) {
         drawing
             .rect()
             .color(BLACK)
-            .x_y(self.position.0, self.position.1)
-            .w(self.cell_size * (self.warehouse.size.0 as f32 + 0.2))
-            .h(self.cell_size * (self.warehouse.size.1 as f32 + 0.2));
+            .x_y(self.location.position.0, self.location.position.1)
+            .w(self.location.cell_size * (self.warehouse.size.0 as f32 + 0.2))
+            .h(self.location.cell_size * (self.warehouse.size.1 as f32 + 0.2));
 
         for i in 0..self.warehouse.size.0 {
             for j in 0..self.warehouse.size.1 {
@@ -388,8 +420,8 @@ impl WarehouseSim {
                     .rect()
                     .color(color)
                     .x_y(x, y)
-                    .w(self.cell_size)
-                    .h(self.cell_size);
+                    .w(self.location.cell_size)
+                    .h(self.location.cell_size);
             }
         }
     }
@@ -408,7 +440,12 @@ impl WarehouseSim {
         let current_turn = (time * self.speed).floor() as usize;
         let alpha = time * self.speed - current_turn as f32;
 
-        let last_turn = end_turn.unwrap_or(im_path.len() - 1);
+        let mut last_turn = end_turn.unwrap_or(im_path.len());
+        if last_turn == 0 {
+            return;
+        } else {
+            last_turn -= 1;
+        };
 
         for (i, x) in im_path
             .windows(2)
@@ -432,7 +469,7 @@ impl WarehouseSim {
                         .line()
                         .start(pt2(start.0, start.1))
                         .end(pt2(end.0, start.1))
-                        .weight(self.cell_size / 8.0)
+                        .weight(self.location.cell_size / 8.0)
                         .color(colour);
                     start.0 = end.0;
                 } else {
@@ -440,7 +477,7 @@ impl WarehouseSim {
                         .line()
                         .start(pt2(start.0, start.1))
                         .end(pt2(start.0, end.1))
-                        .weight(self.cell_size / 8.0)
+                        .weight(self.location.cell_size / 8.0)
                         .color(colour);
                     start.1 = end.1;
                 }
@@ -456,14 +493,14 @@ impl WarehouseSim {
             if start == end {
                 drawing
                     .text("Zzz")
-                    .x_y(start.0, start.1 + self.cell_size * 0.2)
+                    .x_y(start.0, start.1 + self.location.cell_size * 0.2)
                     .color(colour);
             } else {
                 drawing
                     .line()
                     .start(pt2(start.0, start.1))
                     .end(pt2(end.0, end.1))
-                    .weight(self.cell_size / 8.0)
+                    .weight(self.location.cell_size / 8.0)
                     .color(colour);
             }
         }
@@ -474,7 +511,7 @@ impl WarehouseSim {
     }
 
     pub fn draw_robot(&self, robot_index: usize, time: f32, drawing: &nannou::draw::Draw) {
-        let diameter = 0.7 * self.cell_size;
+        let diameter = 0.7 * self.location.cell_size;
 
         let current_node = self.get_robot_position(robot_index, time);
 
