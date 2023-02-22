@@ -277,6 +277,11 @@ impl WarehouseSim {
     pub fn get_paths(&self) -> &[AgentPath] {
         &self.paths
     }
+
+    pub fn get_mut_paths(&mut self) -> &mut [AgentPath] {
+        &mut self.paths
+    }
+
     fn fnode_to_coord(&self, node: &(f32, f32)) -> (f32, f32) {
         let base_node = (
             self.location.position.0

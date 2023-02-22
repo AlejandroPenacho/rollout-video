@@ -23,6 +23,7 @@ const LOOKAHEAD_VISUAL_SIZE: f32 = 100.0;
 struct Model {
     wait_time: Option<f32>,
     warehouse: Warehouse,
+    best_alternative: usize,
     base_cost: i32,
     base_waresim: WarehouseSim,
     alternatives: Vec<Option<WarehouseSim>>,
@@ -120,7 +121,7 @@ impl Model {
             .all(|w| w.as_ref().map_or(true, |w| w.is_finished()))
     }
 
-    fn save_best_policy(&mut self) {
+    fn get_best_policy(&self) -> usize {
         let mut best_index = self
             .alternatives
             .iter()
@@ -152,24 +153,26 @@ impl Model {
             best_index = no_change_index;
         }
 
-        let mut best_policy = self.alternatives[best_index]
-            .as_ref()
-            .unwrap()
-            .get_paths()
-            .to_owned();
-        best_policy.iter_mut().for_each(|p| p.integrate_lookahead());
+        best_index
 
-        self.base_cost = improved_cost;
+        // let mut best_policy = self.alternatives[best_index]
+        //     .as_ref()
+        //     .unwrap()
+        //     .get_paths()
+        //     .to_owned();
+        // best_policy.iter_mut().for_each(|p| p.integrate_lookahead());
 
-        self.base_waresim = WarehouseSim::new(
-            self.warehouse.clone(),
-            WareSimLocation::new((X_POS[0], Y_POS[2]), 20.0),
-            best_policy,
-            DEFAULT_SPEED,
-        );
+        // self.base_cost = improved_cost;
 
-        self.robot_in_improvement =
-            (self.robot_in_improvement + 1) % self.base_waresim.get_paths().len();
+        // self.base_waresim = WarehouseSim::new(
+        //     self.warehouse.clone(),
+        //     WareSimLocation::new((X_POS[0], Y_POS[2]), 20.0),
+        //     best_policy,
+        //     DEFAULT_SPEED,
+        // );
+
+        // self.robot_in_improvement =
+        //     (self.robot_in_improvement + 1) % self.base_waresim.get_paths().len();
     }
 }
 
@@ -253,6 +256,30 @@ impl Model {
                     }
                 }
             }
+            StageId::Simulate => {
+                self.base_waresim.draw(drawing);
+                self.draw(&Stage::get_final(StageId::GenerateLookaheads), drawing);
+                self.alternatives
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, x)| x.as_ref().map(|x| (i, x)))
+                    .for_each(|(i, w)| {
+                        w.draw(drawing);
+                        w.draw_cost((X_POS[3], Y_POS[i]), drawing);
+                    });
+            }
+            StageId::PickBest => {
+                self.draw(&Stage::get_final(StageId::Simulate), drawing);
+                let floater = &self.floating_paths[0];
+
+                floater.draw_robot_path(
+                    self.robot_in_improvement,
+                    0.0,
+                    Some(lookahead_turn + 1),
+                    drawing,
+                );
+                floater.draw_robot(self.robot_in_improvement, 0.0, drawing);
+            }
             _ => {}
         }
     }
@@ -301,14 +328,45 @@ impl Model {
                 self.stage.time = 0.0;
             }
             AddRollout => {
+                self.alternatives.iter_mut().for_each(|x| {
+                    if let Some(x) = x {
+                        x.toggle_running(true);
+                    }
+                });
                 self.stage.id = Simulate;
                 self.stage.time = 0.0;
             }
             Simulate => {
+                self.best_alternative = self.get_best_policy();
+                self.alternative_paths[self.best_alternative]
+                    .as_mut()
+                    .unwrap()
+                    .get_mut_paths()
+                    .iter_mut()
+                    .for_each(|p| p.integrate_lookahead());
+
+                self.floating_paths = vec![self.alternative_paths[self.best_alternative]
+                    .clone()
+                    .unwrap()];
+
                 self.stage.id = PickBest;
                 self.stage.time = 0.0;
             }
             PickBest => {
+                self.base_waresim = WarehouseSim::new(
+                    self.warehouse.clone(),
+                    WareSimLocation::new((X_POS[0], Y_POS[2]), 20.0),
+                    self.alternative_paths[self.best_alternative]
+                        .as_ref()
+                        .unwrap()
+                        .get_paths()
+                        .to_owned(),
+                    DEFAULT_SPEED,
+                );
+
+                self.base_cost = self.base_waresim.get_current_cost();
+                self.robot_in_improvement =
+                    (self.robot_in_improvement + 1) % self.base_waresim.get_paths().len();
                 self.stage.id = InitialWait;
                 self.stage.time = 0.0;
             }
@@ -317,7 +375,6 @@ impl Model {
 
     fn update(&mut self, delta_time: f32) {
         self.stage.time += delta_time;
-        println!("Stage time: {}", self.stage.time);
 
         match self.stage.id {
             StageId::InitialWait => {}
@@ -346,6 +403,22 @@ impl Model {
                         self.floating_paths[i]
                             .set_location(initial_position.interpolate(final_position, alpha));
                     })
+            }
+            StageId::Simulate => {
+                self.alternatives
+                    .iter_mut()
+                    .filter_map(|x| x.as_mut())
+                    .for_each(|w| w.update_time(delta_time));
+            }
+            StageId::PickBest => {
+                let alpha = (self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
+                self.floating_paths[0].set_location(
+                    self.alternative_paths[self.best_alternative]
+                        .as_mut()
+                        .unwrap()
+                        .get_location()
+                        .interpolate(self.base_waresim.get_location(), alpha),
+                );
             }
             _ => {}
         }
@@ -380,6 +453,7 @@ fn initialize_model(app: &App) -> Model {
         warehouse,
         base_cost: 0,
         base_waresim: drawhouse,
+        best_alternative: 0,
         alternatives: vec![],
         alternative_paths: vec![],
         floating_paths: vec![],
@@ -430,17 +504,7 @@ fn view(app: &App, model: &Model, frame: Frame) {
     model.draw(&model.stage, &draw);
 
     /*
-    model.base_waresim.draw(&draw);
-    model
-        .alternatives
-        .iter()
-        .enumerate()
-        .filter_map(|(i, x)| x.as_ref().map(|x| (i, x)))
-        .for_each(|(i, w)| {
-            w.draw(&draw);
-            w.draw_cost((X_POS[3], Y_POS[i]), &draw);
-        });
-    */
+     */
 
     draw.to_frame(app, &frame).unwrap();
     // app.main_window()
