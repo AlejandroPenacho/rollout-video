@@ -77,6 +77,10 @@ impl Stage {
 
 const LOOKAHEAD_NAMES: [&str; 5] = ["Wait", "Go up", "Go right", "Go down", "Go left"];
 
+fn get_best_policy_color() -> warehouse::StdColour {
+    warehouse::StdColour::new(0, 86, 0)
+}
+
 impl Model {
     fn generate_alternatives(&mut self) {
         let warehouse = &self.warehouse;
@@ -144,12 +148,15 @@ impl Model {
             })
             .unwrap();
 
-        let improved_cost = self.alternatives[best_index]
+        if self.alternatives[best_index]
             .as_ref()
             .unwrap()
-            .get_current_cost();
-
-        if improved_cost == self.base_cost {
+            .get_current_cost()
+            == self.alternatives[no_change_index]
+                .as_ref()
+                .unwrap()
+                .get_current_cost()
+        {
             best_index = no_change_index;
         }
 
@@ -269,6 +276,11 @@ impl Model {
                     });
             }
             StageId::PickBest => {
+                drawing
+                    .rect()
+                    .x_y((X_POS[1] + X_POS[3]) / 2.0, Y_POS[self.best_alternative])
+                    .w_h(600.0, 200.0)
+                    .color(get_best_policy_color());
                 self.draw(&Stage::get_final(StageId::Simulate), drawing);
                 let floater = &self.floating_paths[0];
 
@@ -309,8 +321,11 @@ impl Model {
                 self.floating_paths = self
                     .alternatives
                     .iter()
-                    .filter_map(|x| x.as_ref())
-                    .cloned()
+                    .filter_map(|x| {
+                        let mut x = x.as_ref()?.clone();
+                        x.set_location(self.base_waresim.get_location().clone());
+                        Some(x)
+                    })
                     .collect();
                 self.stage.id = TranslateCurrentPath;
                 self.stage.time = 0.0;
@@ -364,7 +379,10 @@ impl Model {
                     DEFAULT_SPEED,
                 );
 
-                self.base_cost = self.base_waresim.get_current_cost();
+                self.base_cost = self.alternatives[self.best_alternative]
+                    .as_ref()
+                    .unwrap()
+                    .get_current_cost();
                 self.robot_in_improvement =
                     (self.robot_in_improvement + 1) % self.base_waresim.get_paths().len();
                 self.stage.id = InitialWait;
@@ -469,32 +487,6 @@ fn initialize_model(app: &App) -> Model {
 fn update(_app: &App, model: &mut Model, update: Update) {
     model.update(update.since_last.as_secs_f32());
 }
-/*
-    model
-        .alternatives
-        .iter_mut()
-        .filter_map(|x| x.as_mut())
-        .for_each(|w| w.update_time(update.since_last.as_secs_f32()));
-
-    if let Some(t) = model.wait_time.as_mut() {
-        *t -= update.since_last.as_secs_f32();
-    };
-
-    if model.check_completion() {
-        model.save_best_policy();
-        model.generate_alternatives();
-    }
-
-    if model.wait_time.map_or(false, |t| t < 0.0) {
-        model
-            .alternatives
-            .iter_mut()
-            .filter_map(|x| x.as_mut())
-            .for_each(|w| w.toggle_running(true));
-        model.wait_time = None;
-    }
-}
-*/
 
 fn view(app: &App, model: &Model, frame: Frame) {
     frame.clear(GRAY);
@@ -502,9 +494,6 @@ fn view(app: &App, model: &Model, frame: Frame) {
     draw.background().color(GRAY);
 
     model.draw(&model.stage, &draw);
-
-    /*
-     */
 
     draw.to_frame(app, &frame).unwrap();
     // app.main_window()

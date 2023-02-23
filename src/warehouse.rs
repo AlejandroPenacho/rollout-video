@@ -18,7 +18,7 @@ macro_rules! walls {
 
 pub type Node = (i32, i32);
 
-type StdColour = nannou::color::rgb::Rgb<nannou::color::encoding::Srgb, u8>;
+pub type StdColour = nannou::color::rgb::Rgb<nannou::color::encoding::Srgb, u8>;
 
 enum ColorCollection {
     DARK,
