@@ -20,13 +20,13 @@ pub type Node = (i32, i32);
 
 pub type StdColour = nannou::color::rgb::Rgb<nannou::color::encoding::Srgb, u8>;
 
-enum ColorCollection {
+pub enum ColorCollection {
     DARK,
     LIGHT,
     GRAY,
 }
 
-fn get_colour(collection: ColorCollection, index: usize) -> StdColour {
+pub fn get_colour(collection: ColorCollection, index: usize) -> StdColour {
     use ColorCollection::*;
     match collection {
         DARK => [
@@ -60,8 +60,8 @@ pub struct Warehouse {
 
 #[derive(Clone)]
 pub struct WareSimLocation {
-    position: (f32, f32),
-    cell_size: f32,
+    pub position: (f32, f32),
+    pub cell_size: f32,
 }
 
 impl WareSimLocation {

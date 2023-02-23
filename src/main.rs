@@ -192,6 +192,30 @@ impl Model {
         match &stage.id {
             StageId::InitialWait => {
                 self.base_waresim.draw(drawing);
+
+                use warehouse::{get_colour, ColorCollection};
+                let base_position = (X_POS[0], Y_POS[4]);
+                let agent_diameter = 0.7 * self.base_waresim.get_location().cell_size;
+                for agent_index in 0..self.base_waresim.get_paths().len() {
+                    let y_pos = base_position.1 - agent_index as f32 * 50.0;
+
+                    if agent_index == self.robot_in_improvement {
+                        drawing
+                            .rect()
+                            .x_y(base_position.0 - 50.0, y_pos)
+                            .w_h(150.0, 50.0)
+                            .color(GREEN);
+                    };
+
+                    drawing
+                        .text(&format!("Agent {}", agent_index + 1))
+                        .x_y(base_position.0 - 100.0, y_pos);
+                    drawing
+                        .ellipse()
+                        .x_y(base_position.0, y_pos)
+                        .color(get_colour(ColorCollection::DARK, agent_index))
+                        .w_h(agent_diameter, agent_diameter);
+                }
             }
             StageId::TranslateCurrentPath => {
                 self.draw(&Stage::get_final(StageId::InitialWait), drawing);
