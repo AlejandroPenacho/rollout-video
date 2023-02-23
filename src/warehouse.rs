@@ -73,6 +73,7 @@ impl WareSimLocation {
     }
 
     pub fn interpolate(&self, other: &Self, alpha: f32) -> Self {
+        let alpha = -2.0 * alpha.powf(3.0) + 3.0 * alpha.powf(2.0);
         Self {
             position: (
                 self.position.0 * (1.0 - alpha) + other.position.0 * alpha,
@@ -428,6 +429,20 @@ impl WarehouseSim {
                     .w(self.location.cell_size)
                     .h(self.location.cell_size);
             }
+        }
+
+        let diameter = self.location.cell_size * 0.7;
+
+        for (agent_index, path) in self.get_paths().iter().enumerate() {
+            let last_node = path.get_path_iterator().last().unwrap();
+            let target_position = self.inode_to_coord(last_node);
+            drawing
+                .ellipse()
+                .x_y(target_position.0, target_position.1)
+                .w_h(diameter, diameter)
+                .rgba(0.0, 0.0, 0.0, 0.0)
+                .stroke_weight(3.0)
+                .stroke(get_colour(ColorCollection::DARK, agent_index));
         }
     }
 

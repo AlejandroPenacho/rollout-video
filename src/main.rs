@@ -233,6 +233,9 @@ impl Model {
                 self.draw(&Stage::get_final(StageId::GenerateLookaheads), drawing);
                 for wh in self.alternatives.iter().filter_map(|x| x.as_ref()) {
                     wh.draw_warehouse(drawing);
+                    for i in 0..wh.get_paths().len() {
+                        wh.draw_robot(i, 0.0, drawing);
+                    }
                 }
                 for floating in self.floating_paths.iter() {
                     floating.draw_robot_path(
@@ -451,11 +454,13 @@ fn initialize_model(app: &App) -> Model {
     app.set_loop_mode(nannou::app::LoopMode::wait());
 
     let mut walls = HashSet::new();
-    walls.insert((0, 3));
-    walls.insert((1, 3));
-    walls.insert((3, 3));
+    // walls.insert((0, 3));
+    // walls.insert((1, 3));
+    // walls.insert((3, 3));
 
-    let endpoints = [((0, 0), (4, 5)), ((2, 7), (7, 3)), ((9, 7), (2, 3))];
+    // let endpoints = [((0, 0), (4, 5)), ((2, 7), (7, 3)), ((9, 7), (2, 3))];
+
+    let endpoints = [((4, 4), (8, 4)), ((5, 4), (1, 4)), ((9, 7), (2, 3))];
 
     let warehouse = Warehouse::new((12, 8), walls);
     let paths = algorithm::initialize_paths(&warehouse, &endpoints);
