@@ -16,9 +16,11 @@ fn main() {
 
 const DEFAULT_SPEED: f32 = 2.0;
 
-const Y_POS: [f32; 5] = [-400.0, -200.0, 0.0, 200.0, 400.0];
+const Y_POS: [f32; 4] = [-300.0, -100.0, 100.0, 300.0];
 const X_POS: [f32; 4] = [-200.0, 0.0, 200.0, 400.0];
 const LOOKAHEAD_VISUAL_SIZE: f32 = 100.0;
+
+const NEW_ORDER: [usize; 3] = [2, 1, 0];
 
 struct Model {
     wait_time: Option<f32>,
@@ -26,11 +28,13 @@ struct Model {
     best_alternative: usize,
     base_cost: i32,
     base_waresim: WarehouseSim,
+    base_waresim_backup: WarehouseSim,
     alternatives: Vec<Option<WarehouseSim>>,
     alternative_paths: Vec<Option<WarehouseSim>>,
     floating_paths: Vec<WarehouseSim>,
     robot_in_improvement: usize,
     stage: Stage,
+    improvement_order: Vec<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -48,6 +52,7 @@ enum StageId {
     AddRollout,
     Simulate,
     PickBest,
+    Reshuffle,
 }
 
 impl StageId {
@@ -75,7 +80,7 @@ impl Stage {
     }
 }
 
-const LOOKAHEAD_NAMES: [&str; 5] = ["Wait", "Go up", "Go right", "Go down", "Go left"];
+const LOOKAHEAD_NAMES: [&str; 4] = ["Go up", "Go right", "Go down", "Go left"];
 
 fn get_best_policy_color() -> warehouse::StdColour {
     warehouse::StdColour::new(0, 86, 0)
@@ -194,10 +199,11 @@ impl Model {
                 self.base_waresim.draw(drawing);
 
                 use warehouse::{get_colour, ColorCollection};
-                let base_position = (X_POS[0], Y_POS[4]);
+                let base_position = (X_POS[0], Y_POS[3]);
                 let agent_diameter = 0.7 * self.base_waresim.get_location().cell_size;
-                for agent_index in 0..self.base_waresim.get_paths().len() {
-                    let y_pos = base_position.1 - agent_index as f32 * 50.0;
+                for index in 0..self.improvement_order.len() {
+                    let agent_index = self.improvement_order[index];
+                    let y_pos = base_position.1 - index as f32 * 50.0;
 
                     if agent_index == self.robot_in_improvement {
                         drawing
@@ -319,7 +325,7 @@ impl Model {
                 );
                 floater.draw_robot(self.robot_in_improvement, 0.0, drawing);
             }
-            _ => {}
+            StageId::Reshuffle => {}
         }
     }
 
@@ -337,10 +343,11 @@ impl Model {
                 .filter_map(|x| x.as_ref())
                 .all(|w| w.is_finished()),
             PickBest => self.stage.time >= self.stage.id.get_duration().unwrap(),
+            Reshuffle => self.stage.time >= self.stage.id.get_duration().unwrap(),
         }
     }
 
-    fn move_to_next_stage(&mut self) {
+    fn move_to_next_stage(&mut self, app: &App) {
         use StageId::*;
         match self.stage.id {
             InitialWait => {
@@ -397,7 +404,7 @@ impl Model {
             PickBest => {
                 self.base_waresim = WarehouseSim::new(
                     self.warehouse.clone(),
-                    WareSimLocation::new((X_POS[0], Y_POS[2]), 20.0),
+                    WareSimLocation::new((X_POS[0], 0.0), 20.0),
                     self.alternative_paths[self.best_alternative]
                         .as_ref()
                         .unwrap()
@@ -410,15 +417,41 @@ impl Model {
                     .as_ref()
                     .unwrap()
                     .get_current_cost();
-                self.robot_in_improvement =
-                    (self.robot_in_improvement + 1) % self.base_waresim.get_paths().len();
+
+                let current_index = self
+                    .improvement_order
+                    .iter()
+                    .position(|&x| x == self.robot_in_improvement)
+                    .unwrap();
+                let new_index = (current_index + 1) % self.improvement_order.len();
+
+                if new_index != self.improvement_order[0] {
+                    self.robot_in_improvement = self.improvement_order[new_index];
+                    self.stage.id = InitialWait;
+                    self.stage.time = 0.0;
+                    return;
+                }
+
+                if self.base_cost > warehouse::COLLISION_COST {
+                    self.stage.id = Reshuffle;
+                    self.stage.time = 0.0;
+                    self.base_waresim = self.base_waresim_backup.clone();
+                } else {
+                    self.base_waresim_backup = self.base_waresim.clone();
+                    app.quit();
+                }
+            }
+            StageId::Reshuffle => {
+                self.improvement_order = NEW_ORDER.to_vec();
+                self.robot_in_improvement = self.improvement_order[0];
+
                 self.stage.id = InitialWait;
                 self.stage.time = 0.0;
             }
         }
     }
 
-    fn update(&mut self, delta_time: f32) {
+    fn update(&mut self, delta_time: f32, app: &App) {
         self.stage.time += delta_time;
 
         match self.stage.id {
@@ -465,11 +498,12 @@ impl Model {
                         .interpolate(self.base_waresim.get_location(), alpha),
                 );
             }
+            StageId::Reshuffle => {}
             _ => {}
         }
 
         if self.stage_is_finished() {
-            self.move_to_next_stage();
+            self.move_to_next_stage(app);
         }
     }
 }
@@ -477,21 +511,25 @@ impl Model {
 fn initialize_model(app: &App) -> Model {
     app.set_loop_mode(nannou::app::LoopMode::wait());
 
-    let mut walls = HashSet::new();
     // walls.insert((0, 3));
     // walls.insert((1, 3));
     // walls.insert((3, 3));
 
     // let endpoints = [((0, 0), (4, 5)), ((2, 7), (7, 3)), ((9, 7), (2, 3))];
 
-    let endpoints = [((4, 4), (8, 4)), ((5, 4), (1, 4)), ((9, 7), (2, 3))];
+    // let endpoints = [((4, 4), (8, 4)), ((5, 4), (1, 4)), ((9, 7), (2, 3))];
 
-    let warehouse = Warehouse::new((12, 8), walls);
+    let mut walls = HashSet::new();
+    let endpoints = [((2, 2), (7, 2)), ((1, 2), (6, 0)), ((5, 2), (0, 1))];
+    walls.insert((2, 1));
+    walls.insert((3, 1));
+
+    let warehouse = Warehouse::new((8, 3), walls);
     let paths = algorithm::initialize_paths(&warehouse, &endpoints);
 
     let drawhouse = WarehouseSim::new(
         warehouse.clone(),
-        WareSimLocation::new((X_POS[0], Y_POS[2]), 20.0),
+        WareSimLocation::new((X_POS[0], 0.0), 20.0),
         paths,
         DEFAULT_SPEED,
     );
@@ -499,7 +537,8 @@ fn initialize_model(app: &App) -> Model {
     let mut model = Model {
         warehouse,
         base_cost: 0,
-        base_waresim: drawhouse,
+        base_waresim: drawhouse.clone(),
+        base_waresim_backup: drawhouse,
         best_alternative: 0,
         alternatives: vec![],
         alternative_paths: vec![],
@@ -507,14 +546,15 @@ fn initialize_model(app: &App) -> Model {
         robot_in_improvement: 0,
         wait_time: None,
         stage: Stage::get_start(StageId::InitialWait),
+        improvement_order: vec![0, 1, 2],
     };
     model.generate_alternatives();
 
     model
 }
 
-fn update(_app: &App, model: &mut Model, update: Update) {
-    model.update(update.since_last.as_secs_f32());
+fn update(app: &App, model: &mut Model, update: Update) {
+    model.update(update.since_last.as_secs_f32(), app);
 }
 
 fn view(app: &App, model: &Model, frame: Frame) {

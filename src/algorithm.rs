@@ -18,7 +18,7 @@ pub fn improve_policy(
     current_policy: &[AgentPath],
     agent: usize,
 ) -> Vec<Option<Vec<AgentPath>>> {
-    [(0, 0), (0, 1), (1, 0), (0, -1), (-1, 0)]
+    [(0, 1), (1, 0), (0, -1), (-1, 0)]
         .iter()
         .map(|delta| {
             let mut new_policy: Vec<AgentPath> = current_policy.to_owned();

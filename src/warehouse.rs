@@ -50,7 +50,7 @@ pub fn get_colour(collection: ColorCollection, index: usize) -> StdColour {
 }
 
 const LOOKAHEAD_COLOUR: StdColour = GREEN;
-const COLLISION_COST: i32 = 200;
+pub const COLLISION_COST: i32 = 200;
 
 #[derive(Clone)]
 pub struct Warehouse {
@@ -474,6 +474,7 @@ impl WarehouseSim {
             .enumerate()
         {
             let mut start = self.fnode_to_coord(&x[0].0);
+            let original_start = start;
             let end = self.fnode_to_coord(&x[1].0);
 
             let colour = x[1].1;
@@ -510,7 +511,7 @@ impl WarehouseSim {
                 );
             }
 
-            if start == end {
+            if original_start == end {
                 drawing
                     .text("Zzz")
                     .x_y(start.0, start.1 + self.location.cell_size * 0.2)
@@ -522,6 +523,12 @@ impl WarehouseSim {
                     .end(pt2(end.0, end.1))
                     .weight(self.location.cell_size / 8.0)
                     .color(colour);
+                // drawing
+                //     .tri()
+                //     .rotate((end.1 - start.1).atan2(end.0 - start.0))
+                //     .x_y((start.0 + end.0) / 2.0, (start.1 + end.1) / 2.0)
+                //     .w_h(self.location.cell_size / 2.0, self.location.cell_size / 2.0)
+                //     .color(colour);
             }
         }
     }
