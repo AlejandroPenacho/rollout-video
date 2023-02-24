@@ -8,7 +8,7 @@ use nannou::prelude::*;
 use std::collections::HashSet;
 
 fn main() {
-    nannou::app(initialize_model)
+    nannou::app(|app| initialize_model(app, 0))
         .update(update)
         .simple_window(view)
         .run();
@@ -21,6 +21,7 @@ const X_POS: [f32; 4] = [-200.0, 0.0, 200.0, 400.0];
 const LOOKAHEAD_VISUAL_SIZE: f32 = 100.0;
 
 const NEW_ORDER: [usize; 3] = [2, 1, 0];
+const TITLES: [&str; 3] = ["Case 1", "Case 2", "Case 3"];
 
 struct Model {
     wait_time: Option<f32>,
@@ -33,6 +34,7 @@ struct Model {
     alternative_paths: Vec<Option<WarehouseSim>>,
     floating_paths: Vec<WarehouseSim>,
     robot_in_improvement: usize,
+    model_id: usize,
     stage: Stage,
     improvement_order: Vec<usize>,
 }
@@ -45,6 +47,7 @@ struct Stage {
 
 #[derive(Clone, Copy)]
 enum StageId {
+    Title,
     InitialWait,
     TranslateCurrentPath,
     GenerateLookaheads,
@@ -53,6 +56,7 @@ enum StageId {
     Simulate,
     PickBest,
     Reshuffle,
+    FinalWait,
 }
 
 impl StageId {
@@ -166,25 +170,6 @@ impl Model {
         }
 
         best_index
-
-        // let mut best_policy = self.alternatives[best_index]
-        //     .as_ref()
-        //     .unwrap()
-        //     .get_paths()
-        //     .to_owned();
-        // best_policy.iter_mut().for_each(|p| p.integrate_lookahead());
-
-        // self.base_cost = improved_cost;
-
-        // self.base_waresim = WarehouseSim::new(
-        //     self.warehouse.clone(),
-        //     WareSimLocation::new((X_POS[0], Y_POS[2]), 20.0),
-        //     best_policy,
-        //     DEFAULT_SPEED,
-        // );
-
-        // self.robot_in_improvement =
-        //     (self.robot_in_improvement + 1) % self.base_waresim.get_paths().len();
     }
 }
 
@@ -195,6 +180,9 @@ impl Model {
             .len();
 
         match &stage.id {
+            StageId::Title => {
+                drawing.text(TITLES[self.model_id]).font_size(70);
+            }
             StageId::InitialWait => {
                 self.base_waresim.draw(drawing);
 
@@ -325,13 +313,29 @@ impl Model {
                 );
                 floater.draw_robot(self.robot_in_improvement, 0.0, drawing);
             }
-            StageId::Reshuffle => {}
+            StageId::Reshuffle => {
+                let alpha = (self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
+                let alpha = -2.0 * alpha.powf(3.0) + 3.0 * alpha.powf(2.0);
+                self.base_waresim.draw(drawing);
+                draw_order(
+                    &self.improvement_order,
+                    &NEW_ORDER,
+                    self.base_waresim.get_location().cell_size,
+                    None,
+                    alpha,
+                    drawing,
+                );
+            }
+            StageId::FinalWait => {
+                self.draw(&Stage::get_final(StageId::InitialWait), drawing);
+            }
         }
     }
 
     fn stage_is_finished(&self) -> bool {
         use StageId::*;
         match self.stage.id {
+            Title => self.stage.time >= self.stage.id.get_duration().unwrap(),
             InitialWait => self.stage.time >= self.stage.id.get_duration().unwrap(),
             TranslateCurrentPath => self.stage.time >= self.stage.id.get_duration().unwrap(),
             GenerateLookaheads => self.stage.time >= self.stage.id.get_duration().unwrap(),
@@ -344,12 +348,17 @@ impl Model {
                 .all(|w| w.is_finished()),
             PickBest => self.stage.time >= self.stage.id.get_duration().unwrap(),
             Reshuffle => self.stage.time >= self.stage.id.get_duration().unwrap(),
+            FinalWait => self.stage.time >= self.stage.id.get_duration().unwrap(),
         }
     }
 
     fn move_to_next_stage(&mut self, app: &App) {
         use StageId::*;
         match self.stage.id {
+            Title => {
+                self.stage.id = InitialWait;
+                self.stage.time = 0.0;
+            }
             InitialWait => {
                 self.generate_alternatives();
                 self.floating_paths = self
@@ -423,9 +432,10 @@ impl Model {
                     .iter()
                     .position(|&x| x == self.robot_in_improvement)
                     .unwrap();
+
                 let new_index = (current_index + 1) % self.improvement_order.len();
 
-                if new_index != self.improvement_order[0] {
+                if new_index != 0 {
                     self.robot_in_improvement = self.improvement_order[new_index];
                     self.stage.id = InitialWait;
                     self.stage.time = 0.0;
@@ -437,8 +447,8 @@ impl Model {
                     self.stage.time = 0.0;
                     self.base_waresim = self.base_waresim_backup.clone();
                 } else {
-                    self.base_waresim_backup = self.base_waresim.clone();
-                    app.quit();
+                    self.stage.id = FinalWait;
+                    self.stage.time = 0.0;
                 }
             }
             StageId::Reshuffle => {
@@ -447,6 +457,15 @@ impl Model {
 
                 self.stage.id = InitialWait;
                 self.stage.time = 0.0;
+            }
+
+            StageId::FinalWait => {
+                let next_model = self.model_id + 1;
+                if next_model == 3 {
+                    app.quit()
+                } else {
+                    *self = initialize_model(app, next_model);
+                }
             }
         }
     }
@@ -508,34 +527,111 @@ impl Model {
     }
 }
 
-fn initialize_model(app: &App) -> Model {
+fn draw_order(
+    old_order: &[usize],
+    new_order: &[usize],
+    cell_size: f32,
+    robot_in_improvement: Option<usize>,
+    alpha: f32,
+    drawing: &Draw,
+) {
+    use warehouse::{get_colour, ColorCollection};
+
+    let base_position = (X_POS[0], Y_POS[3]);
+    let agent_diameter = 0.7 * cell_size;
+    for agent_index in 0..old_order.len() {
+        let old_pos_index = old_order.iter().position(|&x| x == agent_index).unwrap();
+        let new_pos_index = new_order.iter().position(|&x| x == agent_index).unwrap();
+
+        let alpha_index = old_pos_index as f32 * (1.0 - alpha) + new_pos_index as f32 * alpha;
+
+        let y_pos = base_position.1 - alpha_index * 50.0;
+
+        if robot_in_improvement.map_or(false, |x| x == agent_index) {
+            drawing
+                .rect()
+                .x_y(base_position.0 - 50.0, y_pos)
+                .w_h(150.0, 50.0)
+                .color(GREEN);
+        };
+
+        drawing
+            .text(&format!("Agent {}", agent_index + 1))
+            .x_y(base_position.0 - 100.0, y_pos);
+        drawing
+            .ellipse()
+            .x_y(base_position.0, y_pos)
+            .color(get_colour(ColorCollection::DARK, agent_index))
+            .w_h(agent_diameter, agent_diameter);
+    }
+}
+
+fn initialize_model(app: &App, model_id: usize) -> Model {
     app.set_loop_mode(nannou::app::LoopMode::wait());
 
-    // walls.insert((0, 3));
-    // walls.insert((1, 3));
-    // walls.insert((3, 3));
+    let drawhouse: WarehouseSim = match model_id {
+        0 => {
+            let mut walls = HashSet::new();
+            walls.insert((0, 3));
+            walls.insert((1, 3));
+            walls.insert((3, 3));
 
-    // let endpoints = [((0, 0), (4, 5)), ((2, 7), (7, 3)), ((9, 7), (2, 3))];
+            let endpoints = [((0, 0), (4, 5)), ((2, 7), (7, 3)), ((9, 7), (2, 3))];
 
-    // let endpoints = [((4, 4), (8, 4)), ((5, 4), (1, 4)), ((9, 7), (2, 3))];
+            // let endpoints = [((4, 4), (8, 4)), ((5, 4), (1, 4)), ((9, 7), (2, 3))];
 
-    let mut walls = HashSet::new();
-    let endpoints = [((2, 2), (7, 2)), ((1, 2), (6, 0)), ((5, 2), (0, 1))];
-    walls.insert((2, 1));
-    walls.insert((3, 1));
+            let warehouse = Warehouse::new((10, 8), walls);
+            let paths = algorithm::initialize_paths(&warehouse, &endpoints);
 
-    let warehouse = Warehouse::new((8, 3), walls);
-    let paths = algorithm::initialize_paths(&warehouse, &endpoints);
+            WarehouseSim::new(
+                warehouse,
+                WareSimLocation::new((X_POS[0], 0.0), 20.0),
+                paths,
+                DEFAULT_SPEED,
+            )
+        }
+        1 => {
+            let mut walls = HashSet::new();
+            walls.insert((0, 3));
+            walls.insert((1, 3));
+            walls.insert((3, 3));
 
-    let drawhouse = WarehouseSim::new(
-        warehouse.clone(),
-        WareSimLocation::new((X_POS[0], 0.0), 20.0),
-        paths,
-        DEFAULT_SPEED,
-    );
+            let endpoints = [((4, 4), (8, 4)), ((5, 4), (1, 4)), ((9, 7), (2, 3))];
+
+            let warehouse = Warehouse::new((10, 8), walls);
+            let paths = algorithm::initialize_paths(&warehouse, &endpoints);
+
+            WarehouseSim::new(
+                warehouse,
+                WareSimLocation::new((X_POS[0], 0.0), 20.0),
+                paths,
+                DEFAULT_SPEED,
+            )
+        }
+        2 => {
+            let mut walls = HashSet::new();
+
+            let endpoints = [((2, 2), (7, 2)), ((1, 2), (6, 0)), ((5, 2), (0, 1))];
+            walls.insert((2, 1));
+            walls.insert((3, 1));
+
+            let warehouse = Warehouse::new((8, 3), walls);
+            let paths = algorithm::initialize_paths(&warehouse, &endpoints);
+
+            WarehouseSim::new(
+                warehouse,
+                WareSimLocation::new((X_POS[0], 0.0), 20.0),
+                paths,
+                DEFAULT_SPEED,
+            )
+        }
+        _ => {
+            panic!()
+        }
+    };
 
     let mut model = Model {
-        warehouse,
+        warehouse: drawhouse.get_warehouse().clone(),
         base_cost: 0,
         base_waresim: drawhouse.clone(),
         base_waresim_backup: drawhouse,
@@ -545,7 +641,8 @@ fn initialize_model(app: &App) -> Model {
         floating_paths: vec![],
         robot_in_improvement: 0,
         wait_time: None,
-        stage: Stage::get_start(StageId::InitialWait),
+        model_id,
+        stage: Stage::get_start(StageId::Title),
         improvement_order: vec![0, 1, 2],
     };
     model.generate_alternatives();

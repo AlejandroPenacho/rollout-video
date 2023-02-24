@@ -267,6 +267,10 @@ impl WarehouseSim {
         &self.location
     }
 
+    pub fn get_warehouse(&self) -> &Warehouse {
+        &self.warehouse
+    }
+
     pub fn set_location(&mut self, new_location: WareSimLocation) {
         self.location = new_location;
     }
