@@ -8,7 +8,7 @@ use nannou::prelude::*;
 use std::collections::HashSet;
 
 fn main() {
-    nannou::app(|app| initialize_model(app, 0))
+    nannou::app(|app| initialize_model(app, 2))
         .update(update)
         .simple_window(view)
         .run();
@@ -85,10 +85,6 @@ impl Stage {
 }
 
 const LOOKAHEAD_NAMES: [&str; 4] = ["Go up", "Go right", "Go down", "Go left"];
-
-fn get_best_policy_color() -> warehouse::StdColour {
-    warehouse::StdColour::new(0, 86, 0)
-}
 
 impl Model {
     fn generate_alternatives(&mut self) {
@@ -185,31 +181,19 @@ impl Model {
             }
             StageId::InitialWait => {
                 self.base_waresim.draw(drawing);
+                drawing
+                    .text("Current policy")
+                    .x_y(X_POS[0], 80.0)
+                    .font_size(20);
 
-                use warehouse::{get_colour, ColorCollection};
-                let base_position = (X_POS[0], Y_POS[3]);
-                let agent_diameter = 0.7 * self.base_waresim.get_location().cell_size;
-                for index in 0..self.improvement_order.len() {
-                    let agent_index = self.improvement_order[index];
-                    let y_pos = base_position.1 - index as f32 * 50.0;
-
-                    if agent_index == self.robot_in_improvement {
-                        drawing
-                            .rect()
-                            .x_y(base_position.0 - 50.0, y_pos)
-                            .w_h(150.0, 50.0)
-                            .color(GREEN);
-                    };
-
-                    drawing
-                        .text(&format!("Agent {}", agent_index + 1))
-                        .x_y(base_position.0 - 100.0, y_pos);
-                    drawing
-                        .ellipse()
-                        .x_y(base_position.0, y_pos)
-                        .color(get_colour(ColorCollection::DARK, agent_index))
-                        .w_h(agent_diameter, agent_diameter);
-                }
+                draw_order(
+                    &self.improvement_order,
+                    &self.improvement_order,
+                    self.base_waresim.get_location().cell_size,
+                    Some(self.robot_in_improvement),
+                    0.0,
+                    drawing,
+                );
             }
             StageId::TranslateCurrentPath => {
                 self.draw(&Stage::get_final(StageId::InitialWait), drawing);
@@ -225,6 +209,10 @@ impl Model {
             }
             StageId::GenerateLookaheads => {
                 self.draw(&Stage::get_final(StageId::InitialWait), drawing);
+                drawing
+                    .text("Simulations")
+                    .x_y(X_POS[2], Y_POS[3] + 150.0)
+                    .font_size(25);
 
                 self.alternative_paths
                     .iter()
@@ -286,6 +274,10 @@ impl Model {
             }
             StageId::Simulate => {
                 self.base_waresim.draw(drawing);
+                drawing
+                    .text("Current policy")
+                    .x_y(X_POS[0], 80.0)
+                    .font_size(15);
                 self.draw(&Stage::get_final(StageId::GenerateLookaheads), drawing);
                 self.alternatives
                     .iter()
@@ -301,7 +293,7 @@ impl Model {
                     .rect()
                     .x_y((X_POS[1] + X_POS[3]) / 2.0, Y_POS[self.best_alternative])
                     .w_h(600.0, 200.0)
-                    .color(get_best_policy_color());
+                    .color(warehouse::get_colour(warehouse::ColorCollection::DARK, 3));
                 self.draw(&Stage::get_final(StageId::Simulate), drawing);
                 let floater = &self.floating_paths[0];
 
@@ -316,6 +308,10 @@ impl Model {
             StageId::Reshuffle => {
                 let alpha = (self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
                 let alpha = -2.0 * alpha.powf(3.0) + 3.0 * alpha.powf(2.0);
+                drawing
+                    .text("Current policy")
+                    .x_y(X_POS[0], 80.0)
+                    .font_size(15);
                 self.base_waresim.draw(drawing);
                 draw_order(
                     &self.improvement_order,
@@ -325,6 +321,15 @@ impl Model {
                     alpha,
                     drawing,
                 );
+                drawing
+                    .text("Reshuffling")
+                    .font_size(50)
+                    .x_y(X_POS[1], Y_POS[3] - 50.0)
+                    .width(400.0);
+                drawing
+                    .text("Previous policy is restored")
+                    .font_size(15)
+                    .x_y(X_POS[0], -100.0);
             }
             StageId::FinalWait => {
                 self.draw(&Stage::get_final(StageId::InitialWait), drawing);
@@ -550,20 +555,36 @@ fn draw_order(
         if robot_in_improvement.map_or(false, |x| x == agent_index) {
             drawing
                 .rect()
-                .x_y(base_position.0 - 50.0, y_pos)
-                .w_h(150.0, 50.0)
-                .color(GREEN);
+                .x_y(base_position.0 - 30.0, y_pos)
+                .w_h(110.0, 50.0)
+                .color(get_colour(ColorCollection::DARK, 3));
         };
 
         drawing
             .text(&format!("Agent {}", agent_index + 1))
-            .x_y(base_position.0 - 100.0, y_pos);
+            .x_y(base_position.0 - 50.0, y_pos);
         drawing
             .ellipse()
             .x_y(base_position.0, y_pos)
             .color(get_colour(ColorCollection::DARK, agent_index))
             .w_h(agent_diameter, agent_diameter);
     }
+    drawing
+        .text("Improvement order")
+        .rotate(std::f32::consts::FRAC_PI_2)
+        .x_y(base_position.0 - 130.0, base_position.1 - 50.0)
+        .font_size(18);
+    drawing
+        .line()
+        .start(pt2(base_position.0 - 100.0, base_position.1 + 30.0))
+        .end(pt2(base_position.0 - 100.0, base_position.1 - 130.0))
+        .weight(3.0)
+        .color(WHITE);
+    drawing
+        .tri()
+        .x_y(base_position.0 - 100.0, base_position.1 - 140.0)
+        .rotate(-std::f32::consts::FRAC_PI_2)
+        .w_h(20.0, 20.0);
 }
 
 fn initialize_model(app: &App, model_id: usize) -> Model {

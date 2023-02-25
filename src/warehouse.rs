@@ -49,7 +49,6 @@ pub fn get_colour(collection: ColorCollection, index: usize) -> StdColour {
     }
 }
 
-const LOOKAHEAD_COLOUR: StdColour = GREEN;
 pub const COLLISION_COST: i32 = 200;
 
 #[derive(Clone)]
@@ -399,6 +398,7 @@ impl WarehouseSim {
     pub fn draw(&self, drawing: &nannou::draw::Draw) {
         self.draw_warehouse(drawing);
         self.draw_all_robot_paths(self.run_time, drawing);
+        // self.draw_all_robot_paths(0.0, drawing);
         for robot_index in 0..self.paths.len() {
             self.draw_robot(robot_index, self.run_time, drawing);
         }
@@ -593,7 +593,11 @@ impl WarehouseSim {
             .improved_path
             .iter()
             .map(|&n| (n, get_colour(ColorCollection::DARK, agent_index)))
-            .chain(path.lookahead.iter().map(|&n| (n, LOOKAHEAD_COLOUR)))
+            .chain(
+                path.lookahead
+                    .iter()
+                    .map(|&n| (n, get_colour(ColorCollection::DARK, 3))),
+            )
             .chain(
                 path.a_star
                     .iter()
