@@ -61,7 +61,10 @@ enum StageId {
 
 impl StageId {
     fn get_duration(&self) -> Option<f32> {
+        use StageId::*;
         match self {
+            AddRollout => Some(3.0),
+            GenerateLookaheads => Some(1.0),
             _ => Some(2.0),
         }
     }
@@ -255,7 +258,9 @@ impl Model {
                 }
             }
             StageId::AddRollout => {
-                let alpha = (self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
+                let alpha_2 = (2.0 * self.stage.time / self.stage.id.get_duration().unwrap() - 1.0)
+                    .min(1.0)
+                    .max(0.0);
                 self.draw(&Stage::get_final(StageId::GenerateLookaheads), drawing);
                 for wh in self.alternatives.iter().filter_map(|x| x.as_ref()) {
                     let max_len = wh
@@ -265,11 +270,23 @@ impl Model {
                         .max()
                         .unwrap()
                         - lookahead_turn;
-                    let current_len = (max_len as f32 * alpha).ceil() as usize + lookahead_turn;
+                    let current_len =
+                        (max_len as f32 * alpha_2).ceil() as usize + lookahead_turn + 1;
                     wh.draw_warehouse(drawing);
                     for robot_index in 0..wh.get_paths().len() {
-                        wh.draw_robot_path(robot_index, 0.0, Some(current_len), drawing);
+                        if robot_index == self.robot_in_improvement {
+                            wh.draw_robot_path(robot_index, 0.0, Some(current_len), drawing);
+                        }
                         wh.draw_robot(robot_index, 0.0, drawing);
+                    }
+                }
+
+                for floating in self.floating_paths.iter() {
+                    for robot_index in (0..self.base_waresim.get_paths().len())
+                        .filter(|&x| x != self.robot_in_improvement)
+                    {
+                        // floating.draw_robot(robot_index, 0.0, drawing);
+                        floating.draw_robot_path(robot_index, 0.0, None, drawing);
                     }
                 }
             }
@@ -380,6 +397,16 @@ impl Model {
             CreateWarehouses => {
                 self.stage.id = AddRollout;
                 self.stage.time = 0.0;
+                self.floating_paths = self
+                    .alternatives
+                    .iter()
+                    .filter_map(|x| x.as_ref())
+                    .cloned()
+                    .map(|mut x: WarehouseSim| {
+                        x.set_location(self.base_waresim.get_location().clone());
+                        x
+                    })
+                    .collect();
             }
             AddRollout => {
                 self.alternatives.iter_mut().for_each(|x| {
@@ -507,6 +534,18 @@ impl Model {
                         let final_position = rollout_wh.get_location();
                         self.floating_paths[i]
                             .set_location(initial_position.interpolate(final_position, alpha));
+                    })
+            }
+            StageId::AddRollout => {
+                let alpha_1 =
+                    (2.0 * self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
+                self.floating_paths
+                    .iter_mut()
+                    .zip(self.alternatives.iter().filter_map(|x| x.as_ref()))
+                    .for_each(|(floating, dest)| {
+                        let initial_loc = self.base_waresim.get_location();
+                        let final_loc = dest.get_location();
+                        floating.set_location(initial_loc.interpolate(final_loc, alpha_1));
                     })
             }
             StageId::Simulate => {
@@ -686,6 +725,6 @@ fn view(app: &App, model: &Model, frame: Frame) {
     model.draw(&model.stage, &draw);
 
     draw.to_frame(app, &frame).unwrap();
-    app.main_window()
-        .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
+    // app.main_window()
+    //     .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
 }
