@@ -531,12 +531,27 @@ impl WarehouseSim {
                     .end(pt2(end.0, end.1))
                     .weight(self.location.cell_size / 8.0)
                     .color(colour);
-                // drawing
-                //     .tri()
-                //     .rotate((end.1 - start.1).atan2(end.0 - start.0))
-                //     .x_y((start.0 + end.0) / 2.0, (start.1 + end.1) / 2.0)
-                //     .w_h(self.location.cell_size / 2.0, self.location.cell_size / 2.0)
-                //     .color(colour);
+
+                let center = ((start.0 + 3.0 * end.0) / 4.0, (start.1 + 3.0 * end.1) / 4.0);
+                let h = self.location.cell_size / 3.0;
+                let alpha = 0.4;
+                let angle = (end.1 - start.1).atan2(end.0 - start.0);
+                let points = [
+                    pt2(center.0 + h * angle.cos(), center.1 + h * angle.sin()),
+                    pt2(
+                        center.0 + h * (2.0 * std::f32::consts::FRAC_PI_3 + angle).cos(),
+                        center.1 + h * (2.0 * std::f32::consts::FRAC_PI_3 + angle).sin(),
+                    ),
+                    pt2(
+                        center.0 + h * alpha * (std::f32::consts::PI + angle).cos(),
+                        center.1 + h * alpha * (std::f32::consts::PI + angle).sin(),
+                    ),
+                    pt2(
+                        center.0 + h * (4.0 * std::f32::consts::FRAC_PI_3 + angle).cos(),
+                        center.1 + h * (4.0 * std::f32::consts::FRAC_PI_3 + angle).sin(),
+                    ),
+                ];
+                drawing.polygon().points(points).color(colour);
             }
         }
     }
