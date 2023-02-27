@@ -8,7 +8,7 @@ use nannou::prelude::*;
 use std::collections::HashSet;
 
 fn main() {
-    nannou::app(|app| initialize_model(app, 2))
+    nannou::app(|app| initialize_model(app, 0))
         .update(update)
         .simple_window(view)
         .run();
@@ -183,7 +183,7 @@ impl Model {
                 self.base_waresim.draw(drawing);
                 drawing
                     .text("Current policy")
-                    .x_y(X_POS[0], 80.0)
+                    .x_y(X_POS[0], 130.0)
                     .font_size(20);
 
                 draw_order(
@@ -220,6 +220,7 @@ impl Model {
                     .for_each(|(i, w)| {
                         drawing
                             .text(LOOKAHEAD_NAMES[i])
+                            .font_size(20)
                             .x_y(X_POS[1], Y_POS[i] + LOOKAHEAD_VISUAL_SIZE / 2.0);
 
                         if let Some(w) = w {
@@ -274,10 +275,6 @@ impl Model {
             }
             StageId::Simulate => {
                 self.base_waresim.draw(drawing);
-                drawing
-                    .text("Current policy")
-                    .x_y(X_POS[0], 80.0)
-                    .font_size(15);
                 self.draw(&Stage::get_final(StageId::GenerateLookaheads), drawing);
                 self.alternatives
                     .iter()
@@ -297,13 +294,7 @@ impl Model {
                 self.draw(&Stage::get_final(StageId::Simulate), drawing);
                 let floater = &self.floating_paths[0];
 
-                floater.draw_robot_path(
-                    self.robot_in_improvement,
-                    0.0,
-                    Some(lookahead_turn + 1),
-                    drawing,
-                );
-                floater.draw_robot(self.robot_in_improvement, 0.0, drawing);
+                floater.draw_robot_path(self.robot_in_improvement, 0.0, None, drawing);
             }
             StageId::Reshuffle => {
                 let alpha = (self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
@@ -408,9 +399,21 @@ impl Model {
                     .iter_mut()
                     .for_each(|p| p.integrate_lookahead());
 
-                self.floating_paths = vec![self.alternative_paths[self.best_alternative]
-                    .clone()
-                    .unwrap()];
+                let mut best_waresim = self.alternatives[self.best_alternative]
+                    .as_ref()
+                    .unwrap()
+                    .clone();
+                best_waresim
+                    .get_mut_paths()
+                    .iter_mut()
+                    .for_each(|p| p.integrate_lookahead());
+
+                self.floating_paths = vec![WarehouseSim::new(
+                    best_waresim.get_warehouse().clone(),
+                    best_waresim.get_location().clone(),
+                    best_waresim.get_paths().to_owned(),
+                    DEFAULT_SPEED,
+                )];
 
                 self.stage.id = PickBest;
                 self.stage.time = 0.0;
@@ -515,7 +518,7 @@ impl Model {
             StageId::PickBest => {
                 let alpha = (self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
                 self.floating_paths[0].set_location(
-                    self.alternative_paths[self.best_alternative]
+                    self.alternatives[self.best_alternative]
                         .as_mut()
                         .unwrap()
                         .get_location()
@@ -683,6 +686,6 @@ fn view(app: &App, model: &Model, frame: Frame) {
     model.draw(&model.stage, &draw);
 
     draw.to_frame(app, &frame).unwrap();
-    // app.main_window()
-    //     .capture_frame(&format!("frames/{:0>4}.png", frame.nth()));
+    app.main_window()
+        .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
 }

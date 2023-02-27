@@ -390,6 +390,10 @@ impl WarehouseSim {
 
     pub fn draw_cost(&self, coord: (f32, f32), drawing: &nannou::draw::Draw) {
         drawing
+            .text("Cost:")
+            .font_size(self.location.cell_size as u32)
+            .x_y(coord.0, coord.1 + 25.0);
+        drawing
             .text(&format!("{}", self.get_current_cost()))
             .font_size(self.location.cell_size as u32)
             .x_y(coord.0, coord.1);
@@ -397,8 +401,8 @@ impl WarehouseSim {
 
     pub fn draw(&self, drawing: &nannou::draw::Draw) {
         self.draw_warehouse(drawing);
-        self.draw_all_robot_paths(self.run_time, drawing);
-        // self.draw_all_robot_paths(0.0, drawing);
+        // self.draw_all_robot_paths(self.run_time, drawing);
+        self.draw_all_robot_paths(0.0, drawing);
         for robot_index in 0..self.paths.len() {
             self.draw_robot(robot_index, self.run_time, drawing);
         }
