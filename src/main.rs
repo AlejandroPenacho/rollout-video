@@ -227,15 +227,15 @@ impl Model {
                             .x_y(X_POS[1], Y_POS[i] + LOOKAHEAD_VISUAL_SIZE / 2.0);
 
                         if let Some(w) = w {
-                            w.draw_robot(self.robot_in_improvement, 0.0, drawing);
                             w.draw_robot_path(
                                 self.robot_in_improvement,
                                 0.0,
                                 Some(lookahead_turn + 1),
                                 drawing,
                             );
+                            w.draw_robot(self.robot_in_improvement, 0.0, drawing);
                         } else {
-                            drawing.text("Unfeasible").x_y(X_POS[1], Y_POS[i]);
+                            drawing.text("Infeasible").x_y(X_POS[1], Y_POS[i]);
                         }
                     });
             }
@@ -258,9 +258,8 @@ impl Model {
                 }
             }
             StageId::AddRollout => {
-                let alpha_2 = (2.0 * self.stage.time / self.stage.id.get_duration().unwrap() - 1.0)
-                    .min(1.0)
-                    .max(0.0);
+                let alpha_1 =
+                    (2.0 * self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
                 self.draw(&Stage::get_final(StageId::GenerateLookaheads), drawing);
                 for wh in self.alternatives.iter().filter_map(|x| x.as_ref()) {
                     let max_len = wh
@@ -271,7 +270,7 @@ impl Model {
                         .unwrap()
                         - lookahead_turn;
                     let current_len =
-                        (max_len as f32 * alpha_2).ceil() as usize + lookahead_turn + 1;
+                        (max_len as f32 * alpha_1).ceil() as usize + lookahead_turn + 1;
                     wh.draw_warehouse(drawing);
                     for robot_index in 0..wh.get_paths().len() {
                         if robot_index == self.robot_in_improvement {
@@ -537,15 +536,16 @@ impl Model {
                     })
             }
             StageId::AddRollout => {
-                let alpha_1 =
-                    (2.0 * self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
+                let alpha_2 = (2.0 * self.stage.time / self.stage.id.get_duration().unwrap() - 1.0)
+                    .min(1.0)
+                    .max(0.0);
                 self.floating_paths
                     .iter_mut()
                     .zip(self.alternatives.iter().filter_map(|x| x.as_ref()))
                     .for_each(|(floating, dest)| {
                         let initial_loc = self.base_waresim.get_location();
                         let final_loc = dest.get_location();
-                        floating.set_location(initial_loc.interpolate(final_loc, alpha_1));
+                        floating.set_location(initial_loc.interpolate(final_loc, alpha_2));
                     })
             }
             StageId::Simulate => {

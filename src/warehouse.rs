@@ -533,7 +533,7 @@ impl WarehouseSim {
                     .color(colour);
 
                 let center = ((start.0 + 3.0 * end.0) / 4.0, (start.1 + 3.0 * end.1) / 4.0);
-                let h = self.location.cell_size / 3.0;
+                let h = self.location.cell_size / 4.0;
                 let alpha = 0.4;
                 let angle = (end.1 - start.1).atan2(end.0 - start.0);
                 let points = [
