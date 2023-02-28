@@ -8,10 +8,12 @@ use nannou::prelude::*;
 use std::collections::HashSet;
 
 fn main() {
-    nannou::app(|app| initialize_model(app, 0))
-        .update(update)
-        .simple_window(view)
-        .run();
+    // nannou::app(|app| initialize_model(app, 0))
+    //     .update(update)
+    //     .simple_window(view)
+    //     .run();
+
+    nannou::sketch(sketch_creator).run();
 }
 
 const DEFAULT_SPEED: f32 = 2.0;
@@ -727,4 +729,41 @@ fn view(app: &App, model: &Model, frame: Frame) {
     draw.to_frame(app, &frame).unwrap();
     // app.main_window()
     //     .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
+}
+
+fn sketch_creator(app: &App, frame: Frame) {
+    let draw = app.draw();
+    draw.background().color(WHITE);
+
+    let mut warehouse_0 = initialize_model(app, 0).base_waresim;
+    let mut warehouse_1 = initialize_model(app, 1).base_waresim;
+    let mut warehouse_2 = initialize_model(app, 2).base_waresim;
+
+    let y_pos = [300.0, 0.0, -300.0];
+
+    warehouse_0.set_location(WareSimLocation {
+        position: (0.0, y_pos[0]),
+        cell_size: 30.0,
+    });
+    warehouse_1.set_location(WareSimLocation {
+        position: (0.0, y_pos[1]),
+        cell_size: 30.0,
+    });
+    warehouse_2.set_location(WareSimLocation {
+        position: (0.0, y_pos[2]),
+        cell_size: 30.0,
+    });
+
+    warehouse_0.draw_warehouse(&draw);
+    warehouse_1.draw_warehouse(&draw);
+    warehouse_2.draw_warehouse(&draw);
+
+    for robot_index in 0..3 {
+        warehouse_0.draw_robot(robot_index, 0.0, &draw);
+        warehouse_1.draw_robot(robot_index, 0.0, &draw);
+        warehouse_2.draw_robot(robot_index, 0.0, &draw);
+    }
+
+    app.main_window().capture_frame("picture.png");
+    draw.to_frame(app, &frame).unwrap();
 }
