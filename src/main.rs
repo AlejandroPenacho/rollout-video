@@ -8,7 +8,7 @@ use nannou::prelude::*;
 use std::collections::HashSet;
 
 fn main() {
-    nannou::app(|app| initialize_model(app, 2))
+    nannou::app(|app| initialize_model(app, 0))
         .update(update)
         .simple_window(view)
         .run();
@@ -30,6 +30,7 @@ struct Model {
     warehouse: Warehouse,
     best_alternative: usize,
     base_cost: i32,
+    original_policy_cost: i32,
     base_waresim: WarehouseSim,
     base_waresim_backup: WarehouseSim,
     alternatives: Vec<Option<WarehouseSim>>,
@@ -50,6 +51,8 @@ struct Stage {
 #[derive(Clone, Copy)]
 enum StageId {
     Title,
+    PreWait,
+    InitialSimulation,
     InitialWait,
     TranslateCurrentPath,
     GenerateLookaheads,
@@ -184,11 +187,24 @@ impl Model {
             StageId::Title => {
                 drawing.text(TITLES[self.model_id]).font_size(70);
             }
+            StageId::PreWait => {
+                self.draw(&Stage::get_start(StageId::InitialWait), drawing);
+            }
+            StageId::InitialSimulation => {
+                self.draw(&Stage::get_start(StageId::InitialWait), drawing);
+            }
             StageId::InitialWait => {
                 self.base_waresim.draw(drawing);
                 drawing
                     .text("Current policy")
-                    .x_y(X_POS[0], 130.0)
+                    .x_y(X_POS[0], 100.0)
+                    .font_size(20);
+
+                drawing.text("Cost:").x_y(X_POS[0], -75.0).font_size(20);
+
+                drawing
+                    .text(&format!("{}", self.base_cost))
+                    .x_y(X_POS[0], -100.0)
                     .font_size(20);
 
                 draw_order(
@@ -353,6 +369,8 @@ impl Model {
         use StageId::*;
         match self.stage.id {
             Title => self.stage.time >= self.stage.id.get_duration().unwrap(),
+            PreWait => self.stage.time >= self.stage.id.get_duration().unwrap(),
+            InitialSimulation => self.base_waresim.is_finished(),
             InitialWait => self.stage.time >= self.stage.id.get_duration().unwrap(),
             TranslateCurrentPath => self.stage.time >= self.stage.id.get_duration().unwrap(),
             GenerateLookaheads => self.stage.time >= self.stage.id.get_duration().unwrap(),
@@ -373,6 +391,17 @@ impl Model {
         use StageId::*;
         match self.stage.id {
             Title => {
+                self.stage.id = PreWait;
+                self.stage.time = 0.0;
+            }
+            PreWait => {
+                self.stage.id = InitialSimulation;
+                self.base_waresim.toggle_running(true);
+                self.stage.time = 0.0;
+            }
+            InitialSimulation => {
+                self.base_waresim = self.base_waresim_backup.clone();
+                self.original_policy_cost = self.base_cost;
                 self.stage.id = InitialWait;
                 self.stage.time = 0.0;
             }
@@ -490,6 +519,8 @@ impl Model {
                 self.improvement_order = NEW_ORDER.to_vec();
                 self.robot_in_improvement = self.improvement_order[0];
 
+                self.base_cost = self.original_policy_cost;
+
                 self.stage.id = InitialWait;
                 self.stage.time = 0.0;
             }
@@ -509,6 +540,10 @@ impl Model {
         self.stage.time += delta_time;
 
         match self.stage.id {
+            StageId::InitialSimulation => {
+                self.base_waresim.update_time(delta_time);
+                self.base_cost = self.base_waresim.get_current_cost();
+            }
             StageId::InitialWait => {}
             StageId::TranslateCurrentPath => {
                 let alpha = (self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
@@ -682,6 +717,7 @@ fn initialize_model(app: &App, model_id: usize) -> Model {
     let mut model = Model {
         warehouse: drawhouse.get_warehouse().clone(),
         base_cost: 0,
+        original_policy_cost: 0,
         base_waresim: drawhouse.clone(),
         base_waresim_backup: drawhouse,
         best_alternative: 0,
