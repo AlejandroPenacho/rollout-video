@@ -8,12 +8,12 @@ use nannou::prelude::*;
 use std::collections::HashSet;
 
 fn main() {
-    // nannou::app(|app| initialize_model(app, 0))
-    //     .update(update)
-    //     .simple_window(view)
-    //     .run();
+    nannou::app(|app| initialize_model(app, 2))
+        .update(update)
+        .simple_window(view)
+        .run();
 
-    nannou::sketch(sketch_creator).run();
+    // nannou::sketch(sketch_creator).run();
 }
 
 const DEFAULT_SPEED: f32 = 2.0;
@@ -290,6 +290,9 @@ impl Model {
                         floating.draw_robot_path(robot_index, 0.0, None, drawing);
                     }
                 }
+                for robot_index in 0..self.base_waresim.get_paths().len() {
+                    self.base_waresim.draw_robot(robot_index, 0.0, drawing);
+                }
             }
             StageId::Simulate => {
                 self.base_waresim.draw(drawing);
@@ -402,11 +405,7 @@ impl Model {
                     .alternatives
                     .iter()
                     .filter_map(|x| x.as_ref())
-                    .cloned()
-                    .map(|mut x: WarehouseSim| {
-                        x.set_location(self.base_waresim.get_location().clone());
-                        x
-                    })
+                    .map(|_| self.base_waresim.clone())
                     .collect();
             }
             AddRollout => {
@@ -634,18 +633,16 @@ fn draw_order(
 fn initialize_model(app: &App, model_id: usize) -> Model {
     app.set_loop_mode(nannou::app::LoopMode::wait());
 
+    let mut walls = HashSet::new();
+    walls.insert((2, 2));
+    walls.insert((3, 2));
+    walls.insert((5, 0));
+
+    let warehouse = Warehouse::new((8, 4), walls);
+
     let drawhouse: WarehouseSim = match model_id {
         0 => {
-            let mut walls = HashSet::new();
-            walls.insert((0, 3));
-            walls.insert((1, 3));
-            walls.insert((3, 3));
-
-            let endpoints = [((0, 0), (4, 5)), ((2, 7), (7, 3)), ((9, 7), (2, 3))];
-
-            // let endpoints = [((4, 4), (8, 4)), ((5, 4), (1, 4)), ((9, 7), (2, 3))];
-
-            let warehouse = Warehouse::new((10, 8), walls);
+            let endpoints = [((1, 1), (6, 0)), ((3, 0), (4, 3)), ((6, 3), (2, 3))];
             let paths = algorithm::initialize_paths(&warehouse, &endpoints);
 
             WarehouseSim::new(
@@ -656,14 +653,7 @@ fn initialize_model(app: &App, model_id: usize) -> Model {
             )
         }
         1 => {
-            let mut walls = HashSet::new();
-            walls.insert((0, 3));
-            walls.insert((1, 3));
-            walls.insert((3, 3));
-
-            let endpoints = [((4, 4), (8, 4)), ((5, 4), (1, 4)), ((9, 7), (2, 3))];
-
-            let warehouse = Warehouse::new((10, 8), walls);
+            let endpoints = [((1, 1), (5, 3)), ((2, 0), (7, 1)), ((6, 2), (4, 0))];
             let paths = algorithm::initialize_paths(&warehouse, &endpoints);
 
             WarehouseSim::new(
@@ -674,13 +664,7 @@ fn initialize_model(app: &App, model_id: usize) -> Model {
             )
         }
         2 => {
-            let mut walls = HashSet::new();
-
-            let endpoints = [((2, 2), (7, 2)), ((1, 2), (6, 0)), ((5, 2), (0, 1))];
-            walls.insert((2, 1));
-            walls.insert((3, 1));
-
-            let warehouse = Warehouse::new((8, 3), walls);
+            let endpoints = [((2, 3), (7, 3)), ((1, 3), (6, 1)), ((5, 3), (0, 1))];
             let paths = algorithm::initialize_paths(&warehouse, &endpoints);
 
             WarehouseSim::new(
@@ -743,15 +727,15 @@ fn sketch_creator(app: &App, frame: Frame) {
 
     warehouse_0.set_location(WareSimLocation {
         position: (0.0, y_pos[0]),
-        cell_size: 30.0,
+        cell_size: 55.0,
     });
     warehouse_1.set_location(WareSimLocation {
         position: (0.0, y_pos[1]),
-        cell_size: 30.0,
+        cell_size: 55.0,
     });
     warehouse_2.set_location(WareSimLocation {
         position: (0.0, y_pos[2]),
-        cell_size: 30.0,
+        cell_size: 55.0,
     });
 
     warehouse_0.draw_warehouse(&draw);
@@ -759,11 +743,16 @@ fn sketch_creator(app: &App, frame: Frame) {
     warehouse_2.draw_warehouse(&draw);
 
     for robot_index in 0..3 {
+        warehouse_0.draw_robot_path(robot_index, 0.0, None, &draw);
+        warehouse_1.draw_robot_path(robot_index, 0.0, None, &draw);
+        warehouse_2.draw_robot_path(robot_index, 0.0, None, &draw);
+    }
+    for robot_index in 0..3 {
         warehouse_0.draw_robot(robot_index, 0.0, &draw);
         warehouse_1.draw_robot(robot_index, 0.0, &draw);
         warehouse_2.draw_robot(robot_index, 0.0, &draw);
     }
 
-    app.main_window().capture_frame("picture.png");
+    app.main_window().capture_frame("example.png");
     draw.to_frame(app, &frame).unwrap();
 }
