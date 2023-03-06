@@ -18,7 +18,7 @@ fn main() {
 
 const DEFAULT_SPEED: f32 = 2.0;
 
-const Y_POS: [f32; 4] = [-300.0, -100.0, 100.0, 300.0];
+const Y_POS: [f32; 5] = [-300.0, -150.0, 0.0, 150.0, 300.0];
 const X_POS: [f32; 4] = [-200.0, 0.0, 200.0, 400.0];
 const LOOKAHEAD_VISUAL_SIZE: f32 = 100.0;
 
@@ -92,7 +92,7 @@ impl Stage {
     }
 }
 
-const LOOKAHEAD_NAMES: [&str; 4] = ["Go up", "Go right", "Go down", "Go left"];
+const LOOKAHEAD_NAMES: [&str; 5] = ["Stay", "Go up", "Go right", "Go down", "Go left"];
 
 impl Model {
     fn generate_alternatives(&mut self) {
@@ -232,7 +232,7 @@ impl Model {
                 self.draw(&Stage::get_final(StageId::InitialWait), drawing);
                 drawing
                     .text("Simulations")
-                    .x_y(X_POS[2], Y_POS[3] + 150.0)
+                    .x_y(X_POS[2], Y_POS[4] + 150.0)
                     .font_size(25);
 
                 self.alternative_paths
@@ -326,7 +326,7 @@ impl Model {
                 drawing
                     .rect()
                     .x_y((X_POS[1] + X_POS[3]) / 2.0, Y_POS[self.best_alternative])
-                    .w_h(600.0, 200.0)
+                    .w_h(600.0, 150.0)
                     .color(warehouse::get_colour(warehouse::ColorCollection::DARK, 3));
                 self.draw(&Stage::get_final(StageId::Simulate), drawing);
                 let floater = &self.floating_paths[0];
@@ -338,8 +338,8 @@ impl Model {
                 let alpha = -2.0 * alpha.powf(3.0) + 3.0 * alpha.powf(2.0);
                 drawing
                     .text("Current policy")
-                    .x_y(X_POS[0], 80.0)
-                    .font_size(15);
+                    .x_y(X_POS[0], 100.0)
+                    .font_size(20);
                 self.base_waresim.draw(drawing);
                 draw_order(
                     &self.improvement_order,
@@ -352,7 +352,7 @@ impl Model {
                 drawing
                     .text("Reshuffling")
                     .font_size(50)
-                    .x_y(X_POS[1], Y_POS[3] - 50.0)
+                    .x_y(X_POS[1], Y_POS[4] - 50.0)
                     .width(400.0);
                 drawing
                     .text("Previous policy is restored")
@@ -620,7 +620,7 @@ fn draw_order(
 ) {
     use warehouse::{get_colour, ColorCollection};
 
-    let base_position = (X_POS[0], Y_POS[3]);
+    let base_position = (X_POS[0], Y_POS[4]);
     let agent_diameter = 0.7 * cell_size;
     for agent_index in 0..old_order.len() {
         let old_pos_index = old_order.iter().position(|&x| x == agent_index).unwrap();
@@ -747,8 +747,8 @@ fn view(app: &App, model: &Model, frame: Frame) {
     model.draw(&model.stage, &draw);
 
     draw.to_frame(app, &frame).unwrap();
-    // app.main_window()
-    //     .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
+    app.main_window()
+        .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
 }
 
 fn sketch_creator(app: &App, frame: Frame) {
