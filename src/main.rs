@@ -29,8 +29,8 @@ struct Model {
     wait_time: Option<f32>,
     warehouse: Warehouse,
     best_alternative: usize,
-    base_cost: i32,
-    original_policy_cost: i32,
+    base_cost: f32,
+    original_policy_cost: f32,
     base_waresim: WarehouseSim,
     base_waresim_backup: WarehouseSim,
     alternatives: Vec<Option<WarehouseSim>>,
@@ -144,7 +144,7 @@ impl Model {
             .iter()
             .enumerate()
             .filter_map(|(i, x)| x.as_ref().map(|w| (i, w.get_current_cost())))
-            .min_by_key(|(_, x)| *x)
+            .min_by(|x, y| x.1.partial_cmp(&y.1).unwrap())
             .unwrap()
             .0;
 
@@ -203,7 +203,7 @@ impl Model {
                 drawing.text("Cost:").x_y(X_POS[0], -75.0).font_size(20);
 
                 drawing
-                    .text(&format!("{}", self.base_cost))
+                    .text(&format!("{:.1}", self.base_cost))
                     .x_y(X_POS[0], -100.0)
                     .font_size(20);
 
@@ -233,7 +233,11 @@ impl Model {
                 drawing
                     .text("Simulations")
                     .x_y(X_POS[2], Y_POS[4] + 150.0)
-                    .font_size(25);
+                    .font_size(30);
+                drawing
+                    .text("Initial actions")
+                    .x_y(X_POS[1], Y_POS[4] + 150.0)
+                    .font_size(30);
 
                 self.alternative_paths
                     .iter()
@@ -506,7 +510,8 @@ impl Model {
                     return;
                 }
 
-                if self.base_cost > warehouse::COLLISION_COST {
+                // TODO: It is not easy to set a limit here
+                if self.base_cost > warehouse::COLLISION_COST / 4.0 {
                     self.stage.id = Reshuffle;
                     self.stage.time = 0.0;
                     self.base_waresim = self.base_waresim_backup.clone();
@@ -688,7 +693,8 @@ fn initialize_model(app: &App, model_id: usize) -> Model {
             )
         }
         1 => {
-            let endpoints = [((1, 1), (5, 3)), ((2, 0), (7, 1)), ((6, 2), (4, 0))];
+            let endpoints = [((0, 2), (6, 2)), ((5, 2), (1, 2)), ((7, 3), (1, 1))];
+            // let endpoints = [((1, 1), (5, 3)), ((2, 0), (7, 1)), ((6, 2), (4, 0))];
             let paths = algorithm::initialize_paths(&warehouse, &endpoints);
 
             WarehouseSim::new(
@@ -716,8 +722,8 @@ fn initialize_model(app: &App, model_id: usize) -> Model {
 
     let mut model = Model {
         warehouse: drawhouse.get_warehouse().clone(),
-        base_cost: 0,
-        original_policy_cost: 0,
+        base_cost: 0.0,
+        original_policy_cost: 0.0,
         base_waresim: drawhouse.clone(),
         base_waresim_backup: drawhouse,
         best_alternative: 0,
@@ -747,8 +753,8 @@ fn view(app: &App, model: &Model, frame: Frame) {
     model.draw(&model.stage, &draw);
 
     draw.to_frame(app, &frame).unwrap();
-    app.main_window()
-        .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
+    // app.main_window()
+    //     .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
 }
 
 fn sketch_creator(app: &App, frame: Frame) {

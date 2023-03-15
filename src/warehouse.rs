@@ -2,6 +2,9 @@ use nannou::prelude::*;
 
 use std::collections::HashSet;
 
+pub const COLLISION_COST: f32 = 200.0;
+const ALPHA: f32 = 0.9;
+
 #[macro_export]
 macro_rules! walls {
     () => {{
@@ -49,8 +52,6 @@ pub fn get_colour(collection: ColorCollection, index: usize) -> StdColour {
     }
 }
 
-pub const COLLISION_COST: i32 = 200;
-
 #[derive(Clone)]
 pub struct Warehouse {
     size: (i32, i32),
@@ -92,9 +93,10 @@ pub struct WarehouseSim {
     running: bool,
     run_time: f32,
     speed: f32,
-    cumulative_cost: i32,
+    cumulative_cost: f32,
     bubbles: Vec<TextBubble>,
     collisions: Vec<Vec<bool>>,
+    alpha: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -137,9 +139,9 @@ struct TextBubble {
 }
 
 impl TextBubble {
-    fn movement_cost(position: (f32, f32), initial_time: f32) -> TextBubble {
+    fn movement_cost(position: (f32, f32), initial_time: f32, cost: f32) -> TextBubble {
         TextBubble {
-            text: String::from("+1"),
+            text: format!("+{:.1}", cost),
             color: (1.0, 0.0, 0.0),
             size: 30,
             initial_position: (position.0, position.1 + 0.8),
@@ -149,9 +151,9 @@ impl TextBubble {
         }
     }
 
-    fn collision_cost(position: (f32, f32), initial_time: f32) -> TextBubble {
+    fn collision_cost(position: (f32, f32), initial_time: f32, cost: f32) -> TextBubble {
         TextBubble {
-            text: format!("+{:?}", COLLISION_COST),
+            text: format!("+{:.1}", cost),
             color: (1.0, 0.0, 0.0),
             size: 40,
             initial_position: (position.0, position.1 + 0.8),
@@ -193,8 +195,9 @@ impl WarehouseSim {
             run_time: 0.0,
             speed,
             bubbles: Vec::new(),
-            cumulative_cost: 0,
+            cumulative_cost: 0.0,
             collisions: vec![vec![false; n_robots]; n_robots],
+            alpha: ALPHA,
         };
 
         let mut node_availability = std::collections::HashMap::new();
@@ -258,7 +261,7 @@ impl WarehouseSim {
             .all(|p| p.get_path_iterator().count() <= turn)
     }
 
-    pub fn get_current_cost(&self) -> i32 {
+    pub fn get_current_cost(&self) -> f32 {
         self.cumulative_cost
     }
 
@@ -351,9 +354,10 @@ impl WarehouseSim {
             let target_node = self.paths[robot_index].get_path_iterator().last().unwrap();
 
             if (target_node.0 != new_node.0 || target_node.1 != new_node.1) && turn_start {
-                self.cumulative_cost += 1;
+                let cost = self.alpha.powf(new_turn.floor() as f32);
+                self.cumulative_cost += cost;
                 self.bubbles
-                    .push(TextBubble::movement_cost(new_position, new_time));
+                    .push(TextBubble::movement_cost(new_position, new_time, cost));
             }
         }
 
@@ -368,10 +372,11 @@ impl WarehouseSim {
                 }
 
                 if !self.collisions[robot_1][robot_2] {
-                    self.cumulative_cost += COLLISION_COST;
+                    let cost = COLLISION_COST * self.alpha.powf(new_turn);
+                    self.cumulative_cost += cost;
                     let mean_position = ((pos_1.0 + pos_2.0) / 2.0, (pos_1.1 + pos_2.1) / 2.0);
                     self.bubbles
-                        .push(TextBubble::collision_cost(mean_position, new_time));
+                        .push(TextBubble::collision_cost(mean_position, new_time, cost));
                 }
                 self.collisions[robot_1][robot_2] = true;
                 self.collisions[robot_2][robot_1] = true;
@@ -394,7 +399,7 @@ impl WarehouseSim {
             .font_size(self.location.cell_size as u32)
             .x_y(coord.0, coord.1 + 25.0);
         drawing
-            .text(&format!("{}", self.get_current_cost()))
+            .text(&format!("{:.1}", self.get_current_cost()))
             .font_size(self.location.cell_size as u32)
             .x_y(coord.0, coord.1);
     }
