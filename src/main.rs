@@ -16,10 +16,10 @@ fn main() {
     // nannou::sketch(sketch_creator).run();
 }
 
-const DEFAULT_SPEED: f32 = 2.0;
+const DEFAULT_SPEED: f32 = 1.0;
 
 const Y_POS: [f32; 5] = [-300.0, -150.0, 0.0, 150.0, 300.0];
-const X_POS: [f32; 4] = [-250.0, 0.0, 250.0, 500.0];
+const X_POS: [f32; 4] = [-250.0, 0.0, 250.0, 400.0];
 const LOOKAHEAD_VISUAL_SIZE: f32 = 100.0;
 
 const NEW_ORDER: [usize; 3] = [2, 1, 0];
@@ -68,9 +68,9 @@ impl StageId {
     fn get_duration(&self) -> Option<f32> {
         use StageId::*;
         match self {
-            AddRollout => Some(3.0),
-            GenerateLookaheads => Some(1.0),
-            _ => Some(2.0),
+            AddRollout => Some(6.0),
+            GenerateLookaheads => Some(2.0),
+            _ => Some(4.0),
         }
     }
 }
@@ -764,8 +764,8 @@ fn view(app: &App, model: &Model, frame: Frame) {
     model.draw(&model.stage, &draw);
 
     draw.to_frame(app, &frame).unwrap();
-    // app.main_window()
-    //     .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
+    app.main_window()
+        .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
 }
 
 fn sketch_creator(app: &App, frame: Frame) {
