@@ -19,7 +19,7 @@ fn main() {
 const DEFAULT_SPEED: f32 = 2.0;
 
 const Y_POS: [f32; 5] = [-300.0, -150.0, 0.0, 150.0, 300.0];
-const X_POS: [f32; 4] = [-200.0, 0.0, 200.0, 400.0];
+const X_POS: [f32; 4] = [-250.0, 0.0, 250.0, 500.0];
 const LOOKAHEAD_VISUAL_SIZE: f32 = 100.0;
 
 const NEW_ORDER: [usize; 3] = [2, 1, 0];
@@ -207,6 +207,11 @@ impl Model {
                     .x_y(X_POS[0], -100.0)
                     .font_size(20);
 
+                drawing
+                    .text("Discount factor: 0.9")
+                    .x_y(X_POS[0], -150.0)
+                    .font_size(15);
+
                 draw_order(
                     &self.improvement_order,
                     &self.improvement_order,
@@ -230,10 +235,6 @@ impl Model {
             }
             StageId::GenerateLookaheads => {
                 self.draw(&Stage::get_final(StageId::InitialWait), drawing);
-                drawing
-                    .text("Simulations")
-                    .x_y(X_POS[2], Y_POS[4] + 150.0)
-                    .font_size(30);
                 drawing
                     .text("Initial actions")
                     .x_y(X_POS[1], Y_POS[4] + 150.0)
@@ -262,6 +263,10 @@ impl Model {
                     });
             }
             StageId::CreateWarehouses => {
+                drawing
+                    .text("Simulations")
+                    .x_y(X_POS[2], Y_POS[4] + 150.0)
+                    .font_size(30);
                 self.draw(&Stage::get_final(StageId::GenerateLookaheads), drawing);
                 for wh in self.alternatives.iter().filter_map(|x| x.as_ref()) {
                     wh.draw_warehouse(drawing);
@@ -283,6 +288,10 @@ impl Model {
                 let alpha_1 =
                     (2.0 * self.stage.time / self.stage.id.get_duration().unwrap()).min(1.0);
                 self.draw(&Stage::get_final(StageId::GenerateLookaheads), drawing);
+                drawing
+                    .text("Simulations")
+                    .x_y(X_POS[2], Y_POS[4] + 150.0)
+                    .font_size(30);
                 for wh in self.alternatives.iter().filter_map(|x| x.as_ref()) {
                     let max_len = wh
                         .get_paths()
@@ -746,6 +755,8 @@ fn update(app: &App, model: &mut Model, update: Update) {
 }
 
 fn view(app: &App, model: &Model, frame: Frame) {
+    let window = app.main_window();
+
     frame.clear(GRAY);
     let draw = app.draw();
     draw.background().color(GRAY);

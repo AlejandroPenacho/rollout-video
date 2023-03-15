@@ -143,7 +143,7 @@ impl TextBubble {
         TextBubble {
             text: format!("+{:.1}", cost),
             color: (1.0, 0.0, 0.0),
-            size: 30,
+            size: 20,
             initial_position: (position.0, position.1 + 0.8),
             travel_lenght: 1.5,
             travel_time: 3.0,
@@ -155,7 +155,7 @@ impl TextBubble {
         TextBubble {
             text: format!("+{:.1}", cost),
             color: (1.0, 0.0, 0.0),
-            size: 40,
+            size: 30,
             initial_position: (position.0, position.1 + 0.8),
             travel_lenght: 1.5,
             travel_time: 3.0,
