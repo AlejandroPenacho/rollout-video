@@ -16,11 +16,12 @@ fn main() {
     // nannou::sketch(sketch_creator).run();
 }
 
-const DEFAULT_SPEED: f32 = 1.0;
+const DEFAULT_SPEED: f32 = 3.0; // 3.0
+const DEFAULT_CELL_SIZE: f32 = 40.0;
 
-const Y_POS: [f32; 5] = [-300.0, -150.0, 0.0, 150.0, 300.0];
-const X_POS: [f32; 4] = [-250.0, 0.0, 250.0, 400.0];
-const LOOKAHEAD_VISUAL_SIZE: f32 = 100.0;
+const Y_POS: [f32; 5] = [-410.0, -230.0, -50.0, 130.0, 310.0];
+const X_POS: [f32; 4] = [-300.0, 0.0, 300.0, 560.0];
+const LOOKAHEAD_VISUAL_SIZE: f32 = 140.0;
 
 const NEW_ORDER: [usize; 3] = [2, 1, 0];
 const TITLES: [&str; 3] = ["Case 1", "Case 2", "Case 3"];
@@ -68,9 +69,12 @@ impl StageId {
     fn get_duration(&self) -> Option<f32> {
         use StageId::*;
         match self {
-            AddRollout => Some(6.0),
-            GenerateLookaheads => Some(2.0),
-            _ => Some(4.0),
+            AddRollout => Some(2.0),
+            GenerateLookaheads => Some(1.0),
+            _ => Some(2.0),
+            // AddRollout => Some(6.0),
+            // GenerateLookaheads => Some(2.0),
+            // _ => Some(4.0),
         }
     }
 }
@@ -106,7 +110,7 @@ impl Model {
                     Some(new_paths) => {
                         let mut drawhouse = WarehouseSim::new(
                             warehouse.clone(),
-                            WareSimLocation::new((X_POS[2], Y_POS[i]), 20.0),
+                            WareSimLocation::new((X_POS[2], Y_POS[i]), DEFAULT_CELL_SIZE),
                             new_paths,
                             DEFAULT_SPEED,
                         );
@@ -197,20 +201,20 @@ impl Model {
                 self.base_waresim.draw(drawing);
                 drawing
                     .text("Current policy")
-                    .x_y(X_POS[0], 100.0)
-                    .font_size(20);
+                    .x_y(X_POS[0], 130.0)
+                    .font_size(30);
 
-                drawing.text("Cost:").x_y(X_POS[0], -75.0).font_size(20);
+                drawing.text("Cost:").x_y(X_POS[0], -110.0).font_size(30);
 
                 drawing
                     .text(&format!("{:.1}", self.base_cost))
-                    .x_y(X_POS[0], -100.0)
-                    .font_size(20);
+                    .x_y(X_POS[0], -150.0)
+                    .font_size(30);
 
                 drawing
                     .text("Discount factor: 0.9")
-                    .x_y(X_POS[0], -150.0)
-                    .font_size(15);
+                    .x_y(X_POS[0], -230.0)
+                    .font_size(20);
 
                 draw_order(
                     &self.improvement_order,
@@ -246,7 +250,7 @@ impl Model {
                     .for_each(|(i, w)| {
                         drawing
                             .text(LOOKAHEAD_NAMES[i])
-                            .font_size(20)
+                            .font_size(25)
                             .x_y(X_POS[1], Y_POS[i] + LOOKAHEAD_VISUAL_SIZE / 2.0);
 
                         if let Some(w) = w {
@@ -325,7 +329,8 @@ impl Model {
             }
             StageId::Simulate => {
                 self.base_waresim.draw(drawing);
-                self.draw(&Stage::get_final(StageId::GenerateLookaheads), drawing);
+                // TODO: is this right?
+                self.draw(&Stage::get_final(StageId::CreateWarehouses), drawing);
                 self.alternatives
                     .iter()
                     .enumerate()
@@ -339,7 +344,7 @@ impl Model {
                 drawing
                     .rect()
                     .x_y((X_POS[1] + X_POS[3]) / 2.0, Y_POS[self.best_alternative])
-                    .w_h(600.0, 150.0)
+                    .w_h(700.0, 180.0)
                     .color(warehouse::get_colour(warehouse::ColorCollection::DARK, 3));
                 self.draw(&Stage::get_final(StageId::Simulate), drawing);
                 let floater = &self.floating_paths[0];
@@ -352,7 +357,7 @@ impl Model {
                 drawing
                     .text("Current policy")
                     .x_y(X_POS[0], 100.0)
-                    .font_size(20);
+                    .font_size(30);
                 self.base_waresim.draw(drawing);
                 draw_order(
                     &self.improvement_order,
@@ -490,7 +495,7 @@ impl Model {
             PickBest => {
                 self.base_waresim = WarehouseSim::new(
                     self.warehouse.clone(),
-                    WareSimLocation::new((X_POS[0], 0.0), 20.0),
+                    WareSimLocation::new((X_POS[0], 0.0), DEFAULT_CELL_SIZE),
                     self.alternative_paths[self.best_alternative]
                         .as_ref()
                         .unwrap()
@@ -634,47 +639,51 @@ fn draw_order(
 ) {
     use warehouse::{get_colour, ColorCollection};
 
-    let base_position = (X_POS[0], Y_POS[4]);
+    let base_position = (X_POS[0] + 80.0, Y_POS[4] + 100.0);
     let agent_diameter = 0.7 * cell_size;
+
     for agent_index in 0..old_order.len() {
         let old_pos_index = old_order.iter().position(|&x| x == agent_index).unwrap();
         let new_pos_index = new_order.iter().position(|&x| x == agent_index).unwrap();
 
         let alpha_index = old_pos_index as f32 * (1.0 - alpha) + new_pos_index as f32 * alpha;
 
-        let y_pos = base_position.1 - alpha_index * 50.0;
+        let y_pos = base_position.1 - alpha_index * 65.0;
 
         if robot_in_improvement.map_or(false, |x| x == agent_index) {
             drawing
                 .rect()
-                .x_y(base_position.0 - 30.0, y_pos)
-                .w_h(110.0, 50.0)
+                .x_y(base_position.0 - 50.0, y_pos)
+                .w_h(160.0, 50.0)
                 .color(get_colour(ColorCollection::DARK, 3));
         };
 
         drawing
             .text(&format!("Agent {}", agent_index + 1))
-            .x_y(base_position.0 - 50.0, y_pos);
+            .font_size(20)
+            .x_y(base_position.0 - 70.0, y_pos);
         drawing
             .ellipse()
             .x_y(base_position.0, y_pos)
             .color(get_colour(ColorCollection::DARK, agent_index))
             .w_h(agent_diameter, agent_diameter);
     }
+
     drawing
         .text("Improvement order")
+        .w(250.0)
         .rotate(std::f32::consts::FRAC_PI_2)
-        .x_y(base_position.0 - 130.0, base_position.1 - 50.0)
-        .font_size(18);
+        .x_y(base_position.0 - 170.0, base_position.1 - 60.0)
+        .font_size(24);
     drawing
         .line()
-        .start(pt2(base_position.0 - 100.0, base_position.1 + 30.0))
-        .end(pt2(base_position.0 - 100.0, base_position.1 - 130.0))
-        .weight(3.0)
+        .start(pt2(base_position.0 - 135.0, base_position.1 + 30.0))
+        .end(pt2(base_position.0 - 135.0, base_position.1 - 160.0))
+        .weight(5.0)
         .color(WHITE);
     drawing
         .tri()
-        .x_y(base_position.0 - 100.0, base_position.1 - 140.0)
+        .x_y(base_position.0 - 135.0, base_position.1 - 170.0)
         .rotate(-std::f32::consts::FRAC_PI_2)
         .w_h(20.0, 20.0);
 }
@@ -696,7 +705,7 @@ fn initialize_model(app: &App, model_id: usize) -> Model {
 
             WarehouseSim::new(
                 warehouse,
-                WareSimLocation::new((X_POS[0], 0.0), 20.0),
+                WareSimLocation::new((X_POS[0], 0.0), DEFAULT_CELL_SIZE),
                 paths,
                 DEFAULT_SPEED,
             )
@@ -708,7 +717,7 @@ fn initialize_model(app: &App, model_id: usize) -> Model {
 
             WarehouseSim::new(
                 warehouse,
-                WareSimLocation::new((X_POS[0], 0.0), 20.0),
+                WareSimLocation::new((X_POS[0], 0.0), DEFAULT_CELL_SIZE),
                 paths,
                 DEFAULT_SPEED,
             )
@@ -719,7 +728,7 @@ fn initialize_model(app: &App, model_id: usize) -> Model {
 
             WarehouseSim::new(
                 warehouse,
-                WareSimLocation::new((X_POS[0], 0.0), 20.0),
+                WareSimLocation::new((X_POS[0], 0.0), DEFAULT_CELL_SIZE),
                 paths,
                 DEFAULT_SPEED,
             )
@@ -764,8 +773,8 @@ fn view(app: &App, model: &Model, frame: Frame) {
     model.draw(&model.stage, &draw);
 
     draw.to_frame(app, &frame).unwrap();
-    app.main_window()
-        .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
+    // app.main_window()
+    //     .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
 }
 
 fn sketch_creator(app: &App, frame: Frame) {

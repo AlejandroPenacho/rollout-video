@@ -356,8 +356,10 @@ impl WarehouseSim {
             if (target_node.0 != new_node.0 || target_node.1 != new_node.1) && turn_start {
                 let cost = self.alpha.powf(new_turn.floor() as f32);
                 self.cumulative_cost += cost;
+                /*
                 self.bubbles
                     .push(TextBubble::movement_cost(new_position, new_time, cost));
+                */
             }
         }
 
@@ -396,12 +398,12 @@ impl WarehouseSim {
     pub fn draw_cost(&self, coord: (f32, f32), drawing: &nannou::draw::Draw) {
         drawing
             .text("Cost:")
-            .font_size(self.location.cell_size as u32)
-            .x_y(coord.0, coord.1 + 25.0);
+            .font_size(self.location.cell_size as u32 - 10)
+            .x_y(coord.0, coord.1 + 35.0);
         drawing
             .text(&format!("{:.1}", self.get_current_cost()))
-            .font_size(self.location.cell_size as u32)
-            .x_y(coord.0, coord.1);
+            .font_size(self.location.cell_size as u32 - 10)
+            .x_y(coord.0, coord.1 - 15.0);
     }
 
     pub fn draw(&self, drawing: &nannou::draw::Draw) {
