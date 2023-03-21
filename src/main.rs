@@ -8,7 +8,7 @@ use nannou::prelude::*;
 use std::collections::HashSet;
 
 fn main() {
-    nannou::app(|app| initialize_model(app, 0))
+    nannou::app(|app| initialize_model(app, 2))
         .update(update)
         .simple_window(view)
         .run();
@@ -16,7 +16,7 @@ fn main() {
     // nannou::sketch(sketch_creator).run();
 }
 
-const DEFAULT_SPEED: f32 = 3.0; // 3.0
+const DEFAULT_SPEED: f32 = 1.0; // 3.0
 const DEFAULT_CELL_SIZE: f32 = 40.0;
 
 const Y_POS: [f32; 5] = [-410.0, -230.0, -50.0, 130.0, 310.0];
@@ -69,12 +69,12 @@ impl StageId {
     fn get_duration(&self) -> Option<f32> {
         use StageId::*;
         match self {
-            AddRollout => Some(2.0),
-            GenerateLookaheads => Some(1.0),
-            _ => Some(2.0),
-            // AddRollout => Some(6.0),
-            // GenerateLookaheads => Some(2.0),
-            // _ => Some(4.0),
+            // AddRollout => Some(2.0),
+            // GenerateLookaheads => Some(1.0),
+            // _ => Some(2.0),
+            AddRollout => Some(6.0),
+            GenerateLookaheads => Some(2.0),
+            _ => Some(4.0),
         }
     }
 }
@@ -773,8 +773,8 @@ fn view(app: &App, model: &Model, frame: Frame) {
     model.draw(&model.stage, &draw);
 
     draw.to_frame(app, &frame).unwrap();
-    // app.main_window()
-    //     .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
+    app.main_window()
+        .capture_frame(&format!("frames/{:0>5}.png", frame.nth()));
 }
 
 fn sketch_creator(app: &App, frame: Frame) {
